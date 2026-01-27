@@ -1,0 +1,11 @@
+# Qdrant Vector Database
+qdrant-client>=1.7.0
+
+# Embeddings
+sentence-transformers>=2.2.0
+
+# Data Processing
+pandas>=2.0.0
+
+# Environment Variables
+python-dotenv>=1.0.0
