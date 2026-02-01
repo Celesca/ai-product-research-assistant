@@ -1,13 +1,3 @@
-"""
-AI Research Agent using LangGraph and Ollama.
-
-This agent intelligently routes queries to the appropriate tools:
-- Product Catalog RAG: For internal product searches
-- Web Search: For market trends and competitor info
-- Price Analysis: For margin calculations and pricing insights
-
-The agent uses LangGraph for state management and tool orchestration.
-"""
 from typing import Dict, Any, List, Optional, TypedDict, Annotated, Sequence
 from typing_extensions import TypedDict
 import operator
@@ -45,25 +35,13 @@ class AgentState(TypedDict):
 # Tool input schemas are now imported from src.models.schemas
 
 
-class ResearchAgent:
-    """
-    AI Research Agent that intelligently routes queries to appropriate tools.
-    
-    Uses LangGraph for orchestration and Ollama for LLM inference.
-    """
-    
+class ResearchAgent:   
     def __init__(
         self,
         ollama_base_url: str = None,
         ollama_model: str = None
     ):
-        """
-        Initialize the Research Agent.
-        
-        Args:
-            ollama_base_url: Base URL for Ollama API
-            ollama_model: Name of the Ollama model to use
-        """
+
         self.ollama_base_url = ollama_base_url or settings.OLLAMA_BASE_URL
         self.ollama_model = ollama_model or settings.OLLAMA_MODEL
         
@@ -318,16 +296,6 @@ def create_agent(
     ollama_base_url: str = None,
     ollama_model: str = None
 ) -> ResearchAgent:
-    """
-    Factory function to create a ResearchAgent.
-    
-    Args:
-        ollama_base_url: Base URL for Ollama API
-        ollama_model: Name of the Ollama model to use
-        
-    Returns:
-        Configured ResearchAgent instance
-    """
     return ResearchAgent(
         ollama_base_url=ollama_base_url,
         ollama_model=ollama_model

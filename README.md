@@ -40,7 +40,7 @@ An AI-powered product research assistant built with FastAPI, LangGraph, Qdrant, 
 
 4. **Pull the Ollama model (first time only):**
    ```bash
-   docker exec -it ollama ollama pull llama3.2
+   docker exec -it ollama ollama pull qwen3:4b
    ```
 
 5. **Run data ingestion:**
