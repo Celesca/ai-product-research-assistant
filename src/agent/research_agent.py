@@ -359,24 +359,3 @@ def create_agent(
         ollama_base_url=ollama_base_url,
         ollama_model=ollama_model
     )
-
-
-# For testing
-if __name__ == "__main__":
-    agent = create_agent()
-    
-    test_queries = [
-        "What wireless headphones do we have in stock?",
-        "What is the current market price for noise-cancelling headphones?",
-        "Which products have the lowest profit margins?",
-        "Should we adjust AudioMax headphones pricing vs competitors?"
-    ]
-    
-    for query in test_queries:
-        print(f"\n{'='*60}")
-        print(f"Query: {query}")
-        print("="*60)
-        result = agent.query(query)
-        print(f"Tools Used: {result['tools_used']}")
-        print(f"Reasoning: {result['reasoning']}")
-        print(f"Answer: {result['answer'][:500]}...")
