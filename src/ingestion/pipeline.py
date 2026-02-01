@@ -1,9 +1,3 @@
-"""
-Data Ingestion Pipeline for Products Catalog.
-
-This module handles loading products from CSV, generating embeddings,
-and storing them in Qdrant vector database with full metadata for filtering.
-"""
 import hashlib
 import pandas as pd
 from typing import List, Dict, Any, Optional
@@ -17,8 +11,8 @@ import os
 # Add parent directory to path for imports
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.dirname(__file__))))
 
-from src.config import config
-from src.embeddings import EmbeddingService
+from src.utils.config import config
+from src.utils.embeddings import EmbeddingService
 
 
 class ProductIngestionPipeline:

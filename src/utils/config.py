@@ -37,7 +37,7 @@ class Settings(BaseSettings):
     @property
     def DATA_DIR(self) -> str:
         return os.path.join(
-            os.path.dirname(os.path.dirname(__file__)), 
+            os.path.dirname(os.path.dirname(os.path.dirname(__file__))), 
             "data"
         )
     
@@ -68,7 +68,7 @@ class Config:
     
     # Data Paths
     DATA_DIR: str = os.path.join(
-        os.path.dirname(os.path.dirname(__file__)), 
+        os.path.dirname(os.path.dirname(os.path.dirname(__file__))), 
         "data"
     )
     PRODUCTS_CSV: str = os.path.join(DATA_DIR, "products_catalog.csv")
