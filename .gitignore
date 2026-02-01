@@ -1,0 +1,12 @@
+# all pycache
+__pycache__
+
+# all venv
+venv
+
+# all docker
+.Dockerfile
+
+docker-compose.yml
+
+.env

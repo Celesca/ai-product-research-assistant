@@ -1,0 +1,41 @@
+# FastAPI and Server
+fastapi>=0.128.0
+uvicorn[standard]>=0.27.0
+pydantic>=2.5.0
+pydantic-settings>=2.1.0
+
+# LangGraph and LangChain
+langgraph>=0.2.0
+langchain>=0.3.0
+langchain-community>=0.3.0
+langchain-ollama>=0.2.0
+
+# Qdrant Vector Database
+qdrant-client>=1.7.0
+
+# Embeddings
+sentence-transformers>=2.2.0
+
+# Data Processing
+pandas>=2.0.0
+
+# Database
+sqlalchemy>=2.0.0
+aiosqlite>=0.19.0
+
+# HTTP Client for web search
+httpx>=0.26.0
+aiohttp>=3.9.0
+
+# Environment Variables
+python-dotenv>=1.0.0
+
+# Load Testing
+locust>=2.20.0
+
+# Testing
+pytest>=7.4.0
+pytest-asyncio>=0.23.0
+
+# Utilities
+python-multipart>=0.0.6
