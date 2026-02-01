@@ -221,7 +221,7 @@ class ProductIngestionPipeline:
         
         # Verify ingestion
         collection_info = self.client.get_collection(self.collection_name)
-        vectors_count = collection_info.vectors_count
+        vectors_count = collection_info.points_count
         
         print(f"\n✅ Ingestion complete!")
         print(f"   Collection: {self.collection_name}")
