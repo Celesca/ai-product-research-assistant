@@ -12,8 +12,8 @@ import sys
 import os
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.dirname(__file__))))
 
-from src.config import settings
-from src.embeddings import EmbeddingService
+from src.utils.config import settings
+from src.utils.embeddings import EmbeddingService
 
 
 class ProductCatalogRAGTool:

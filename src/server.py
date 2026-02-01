@@ -17,10 +17,10 @@ import sys
 import os
 sys.path.insert(0, os.path.dirname(os.path.dirname(__file__)))
 
-from src.config import settings
-from src.database import DatabaseManager, db_manager
+from src.utils.config import settings
+from src.utils.database import DatabaseManager, db_manager
 from src.agent.research_agent import ResearchAgent, create_agent
-from src.model.server import (
+from src.models.schemas import (
     QueryRequest, 
     QueryResponse, 
     FeedbackRequest, 

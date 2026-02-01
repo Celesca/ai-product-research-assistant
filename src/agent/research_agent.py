@@ -25,7 +25,8 @@ import sys
 import os
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.dirname(__file__))))
 
-from src.config import settings
+from src.utils.config import settings
+from src.models.schemas import ProductSearchInput, WebSearchInput, PriceAnalysisInput
 from src.tools.product_catalog_rag import ProductCatalogRAGTool
 from src.tools.web_search import WebSearchTool
 from src.tools.price_analysis import PriceAnalysisTool
@@ -41,35 +42,7 @@ class AgentState(TypedDict):
     confidence: float
 
 
-# Tool input schemas for Ollama function calling
-class ProductSearchInput(BaseModel):
-    """Input schema for product catalog search."""
-    query: str = Field(description="Natural language search query for products")
-    category: Optional[str] = Field(default=None, description="Filter by product category")
-    brand: Optional[str] = Field(default=None, description="Filter by brand name")
-    min_price: Optional[float] = Field(default=None, description="Minimum price filter")
-    max_price: Optional[float] = Field(default=None, description="Maximum price filter")
-    min_rating: Optional[float] = Field(default=None, description="Minimum rating filter")
-    in_stock: Optional[bool] = Field(default=None, description="Filter for products in stock only")
-    limit: int = Field(default=5, description="Maximum number of results to return")
-
-
-class WebSearchInput(BaseModel):
-    """Input schema for web search."""
-    query: str = Field(description="Search query for web search")
-    limit: int = Field(default=5, description="Maximum number of results")
-
-
-class PriceAnalysisInput(BaseModel):
-    """Input schema for price analysis."""
-    analysis_type: str = Field(
-        default="lowest_margins",
-        description="Type of analysis: lowest_margins, highest_margins, below_threshold, category_analysis, brand_analysis"
-    )
-    category: Optional[str] = Field(default=None, description="Filter by category")
-    brand: Optional[str] = Field(default=None, description="Filter by brand")
-    threshold: float = Field(default=40.0, description="Margin threshold for below_threshold analysis")
-    limit: int = Field(default=10, description="Maximum number of products to return")
+# Tool input schemas are now imported from src.models.schemas
 
 
 class ResearchAgent:
