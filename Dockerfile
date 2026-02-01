@@ -27,8 +27,8 @@ RUN --mount=type=cache,target=/root/.cache/uv \
 # Copy application code
 COPY . .
 
-# Create data directory
-RUN mkdir -p /app/data
+# Create data directory and copy data
+COPY data /app/data
 
 # Expose port
 EXPOSE 8000
