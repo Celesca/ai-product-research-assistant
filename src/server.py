@@ -1,7 +1,4 @@
 """
-FastAPI REST API for the AI Product Research Assistant.
-
-Provides endpoints for:
 - POST /query - Main agent query endpoint
 - GET /queries - Retrieve query history
 - POST /feedback - Submit user feedback
@@ -22,12 +19,19 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(__file__)))
 from src.config import settings
 from src.database import DatabaseManager, db_manager
 from src.agent.research_agent import ResearchAgent, create_agent
+from src.model import (
+    QueryRequest, 
+    QueryResponse, 
+    FeedbackRequest, 
+    FeedbackResponse, 
+    QueryHistoryItem, 
+    QueryHistoryResponse, 
+    HealthResponse
+)
 
-# Configure logging
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
-# Initialize FastAPI app
 app = FastAPI(
     title="AI Product Research Assistant",
     description="AI-powered product research assistant using RAG, web search, and price analysis",
@@ -36,7 +40,6 @@ app = FastAPI(
     redoc_url="/redoc"
 )
 
-# Add CORS middleware
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],
@@ -46,96 +49,7 @@ app.add_middleware(
 )
 
 
-# Request/Response Models
-class QueryRequest(BaseModel):
-    """Request model for the query endpoint."""
-    query: str = Field(..., description="The user's query", min_length=1, max_length=2000)
-    
-    class Config:
-        json_schema_extra = {
-            "example": {
-                "query": "What wireless headphones do we have in stock?"
-            }
-        }
 
-
-class QueryResponse(BaseModel):
-    """Response model for the query endpoint."""
-    status: str
-    query: str
-    answer: str
-    tools_used: List[str]
-    reasoning: str
-    confidence: float
-    execution_time_ms: int
-    query_id: Optional[int] = None
-    
-    class Config:
-        json_schema_extra = {
-            "example": {
-                "status": "success",
-                "query": "What wireless headphones do we have in stock?",
-                "answer": "We have 3 wireless headphones in stock...",
-                "tools_used": ["product_catalog_search"],
-                "reasoning": "Used product catalog search to find wireless headphones",
-                "confidence": 0.92,
-                "execution_time_ms": 1234,
-                "query_id": 1
-            }
-        }
-
-
-class FeedbackRequest(BaseModel):
-    """Request model for the feedback endpoint."""
-    query_id: int = Field(..., description="ID of the query to provide feedback for")
-    rating: Optional[int] = Field(None, ge=1, le=5, description="Rating from 1-5")
-    helpful: Optional[bool] = Field(None, description="Whether the response was helpful")
-    comment: Optional[str] = Field(None, max_length=1000, description="Optional comment")
-    
-    class Config:
-        json_schema_extra = {
-            "example": {
-                "query_id": 1,
-                "rating": 5,
-                "helpful": True,
-                "comment": "Very accurate product information!"
-            }
-        }
-
-
-class FeedbackResponse(BaseModel):
-    """Response model for the feedback endpoint."""
-    status: str
-    message: str
-    feedback_id: Optional[int] = None
-
-
-class QueryHistoryItem(BaseModel):
-    """Model for query history items."""
-    id: int
-    query: str
-    response: Optional[str]
-    tools_used: Optional[List[str]]
-    reasoning: Optional[str]
-    confidence: Optional[float]
-    execution_time_ms: Optional[int]
-    created_at: str
-    feedback: Optional[Dict[str, Any]]
-
-
-class QueryHistoryResponse(BaseModel):
-    """Response model for query history endpoint."""
-    status: str
-    total: int
-    queries: List[QueryHistoryItem]
-
-
-class HealthResponse(BaseModel):
-    """Response model for health check endpoint."""
-    status: str
-    timestamp: str
-    version: str
-    services: Dict[str, str]
 
 
 # Global agent instance (initialized on startup)
@@ -144,7 +58,6 @@ agent: Optional[ResearchAgent] = None
 
 @app.on_event("startup")
 async def startup_event():
-    """Initialize services on startup."""
     global agent
     
     logger.info("Starting AI Product Research Assistant...")
@@ -225,18 +138,12 @@ async def query_endpoint(
         logger.error(f"Error processing query: {e}")
         raise HTTPException(status_code=500, detail=str(e))
 
-
+# Retrieve query history return list of past queries
 @app.get("/queries", response_model=QueryHistoryResponse, tags=["History"])
 async def get_queries(
     limit: int = 50,
     offset: int = 0
 ):
-    """
-    Retrieve query history.
-    
-    Returns a list of past queries with their responses, tools used,
-    and any associated feedback.
-    """
     try:
         queries = await db_manager.get_queries(limit=limit, offset=offset)
         
@@ -263,15 +170,9 @@ async def get_queries(
         logger.error(f"Error retrieving queries: {e}")
         raise HTTPException(status_code=500, detail=str(e))
 
-
+# Submit feedback for a query response
 @app.post("/feedback", response_model=FeedbackResponse, tags=["Feedback"])
 async def submit_feedback(request: FeedbackRequest):
-    """
-    Submit feedback for a query response.
-    
-    Allows users to rate responses and provide comments to help
-    improve the system.
-    """
     try:
         # Check if query exists
         query = await db_manager.get_query_by_id(request.query_id)
@@ -304,11 +205,6 @@ async def submit_feedback(request: FeedbackRequest):
 
 @app.get("/health", response_model=HealthResponse, tags=["Health"])
 async def health_check():
-    """
-    Health check endpoint.
-    
-    Returns the status of the API and its dependent services.
-    """
     services = {}
     
     # Check database
@@ -319,7 +215,7 @@ async def health_check():
     except Exception as e:
         services["database"] = f"unhealthy: {str(e)}"
     
-    # Check Qdrant
+    # Qdrant services
     try:
         from qdrant_client import QdrantClient
         client = QdrantClient(host=settings.QDRANT_HOST, port=settings.QDRANT_PORT)
@@ -328,7 +224,7 @@ async def health_check():
     except Exception as e:
         services["qdrant"] = f"unhealthy: {str(e)}"
     
-    # Check Ollama
+    # Ollama services
     try:
         import httpx
         response = httpx.get(f"{settings.OLLAMA_BASE_URL}/api/tags", timeout=5.0)
@@ -339,7 +235,6 @@ async def health_check():
     except Exception as e:
         services["ollama"] = f"unhealthy: {str(e)}"
     
-    # Determine overall status
     all_healthy = all("healthy" == v for v in services.values())
     
     return HealthResponse(
@@ -350,10 +245,8 @@ async def health_check():
     )
 
 
-# Additional utility endpoints
 @app.get("/", tags=["Root"])
 async def root():
-    """Root endpoint with API information."""
     return {
         "name": "AI Product Research Assistant",
         "version": "1.0.0",
@@ -365,7 +258,6 @@ async def root():
 
 @app.get("/tools", tags=["Info"])
 async def list_tools():
-    """List available tools and their descriptions."""
     return {
         "tools": [
             {
