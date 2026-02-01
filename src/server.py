@@ -11,6 +11,7 @@ from typing import Optional, List, Dict, Any
 from datetime import datetime
 import time
 import logging
+from contextlib import asynccontextmanager
 
 import sys
 import os
@@ -32,12 +33,40 @@ from src.model import (
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    """Lifecycle events for the application."""
+    global agent
+    
+    logger.info("Starting AI Product Research Assistant...")
+    
+    # Create database tables
+    logger.info("Initializing database...")
+    db_manager.create_tables()
+    
+    # Initialize agent
+    logger.info("Initializing AI agent...")
+    try:
+        agent = create_agent()
+        logger.info("Agent initialized successfully")
+    except Exception as e:
+        logger.warning(f"Failed to initialize agent: {e}. Will retry on first query.")
+    
+    logger.info("Startup complete!")
+    
+    yield
+    
+    # Cleanup on shutdown
+    logger.info("Shutting down AI Product Research Assistant...")
+
+
 app = FastAPI(
     title="AI Product Research Assistant",
     description="AI-powered product research assistant using RAG, web search, and price analysis",
     version="1.0.0",
     docs_url="/docs",
-    redoc_url="/redoc"
+    redoc_url="/redoc",
+    lifespan=lifespan
 )
 
 app.add_middleware(
@@ -56,31 +85,7 @@ app.add_middleware(
 agent: Optional[ResearchAgent] = None
 
 
-@app.on_event("startup")
-async def startup_event():
-    global agent
-    
-    logger.info("Starting AI Product Research Assistant...")
-    
-    # Create database tables
-    logger.info("Initializing database...")
-    db_manager.create_tables()
-    
-    # Initialize agent
-    logger.info("Initializing AI agent...")
-    try:
-        agent = create_agent()
-        logger.info("Agent initialized successfully")
-    except Exception as e:
-        logger.warning(f"Failed to initialize agent: {e}. Will retry on first query.")
-    
-    logger.info("Startup complete!")
 
-
-@app.on_event("shutdown")
-async def shutdown_event():
-    """Cleanup on shutdown."""
-    logger.info("Shutting down AI Product Research Assistant...")
 
 
 def get_agent() -> ResearchAgent:
@@ -90,7 +95,6 @@ def get_agent() -> ResearchAgent:
         agent = create_agent()
     return agent
 
-
 # Endpoints
 @app.post("/query", response_model=QueryResponse, tags=["Query"])
 async def query_endpoint(
@@ -98,15 +102,6 @@ async def query_endpoint(
     background_tasks: BackgroundTasks,
     agent: ResearchAgent = Depends(get_agent)
 ):
-    """
-    Process a user query using the AI agent.
-    
-    The agent will:
-    1. Analyze the query to determine which tools to use
-    2. Execute the appropriate tools (product catalog, web search, price analysis)
-    3. Generate a comprehensive response
-    4. Store the query in history for future reference
-    """
     logger.info(f"Received query: {request.query[:100]}...")
     
     try:
