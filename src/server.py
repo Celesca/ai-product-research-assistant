@@ -20,7 +20,7 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(__file__)))
 from src.config import settings
 from src.database import DatabaseManager, db_manager
 from src.agent.research_agent import ResearchAgent, create_agent
-from src.model import (
+from src.model.server import (
     QueryRequest, 
     QueryResponse, 
     FeedbackRequest, 
@@ -35,16 +35,13 @@ logger = logging.getLogger(__name__)
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    """Lifecycle events for the application."""
     global agent
     
     logger.info("Starting AI Product Research Assistant...")
     
-    # Create database tables
     logger.info("Initializing database...")
     db_manager.create_tables()
     
-    # Initialize agent
     logger.info("Initializing AI agent...")
     try:
         agent = create_agent()
@@ -56,7 +53,6 @@ async def lifespan(app: FastAPI):
     
     yield
     
-    # Cleanup on shutdown
     logger.info("Shutting down AI Product Research Assistant...")
 
 
@@ -77,15 +73,8 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-
-
-
-
 # Global agent instance (initialized on startup)
 agent: Optional[ResearchAgent] = None
-
-
-
 
 
 def get_agent() -> ResearchAgent:
@@ -95,7 +84,6 @@ def get_agent() -> ResearchAgent:
         agent = create_agent()
     return agent
 
-# Endpoints
 @app.post("/query", response_model=QueryResponse, tags=["Query"])
 async def query_endpoint(
     request: QueryRequest,
