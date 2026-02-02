@@ -433,3 +433,8 @@ For higher load:
 4. **A/B Testing**: Compare different models/prompts
 5. **Real-time Updates**: WebSocket for live catalog changes
 6. **Advanced Analytics**: Query pattern analysis
+
+- How monthly updates work
+- Scaling strategy
+- Production considerations (latency, cost, security)
+- Trade-offs in your design

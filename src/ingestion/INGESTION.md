@@ -2,6 +2,8 @@
 
 This document describes the data ingestion pipeline for the AI Product Research Assistant.
 
+You can see the whole picture of data ingestion in architecture/data_pipeline_diagram.png
+
 ## Pipeline Architecture
 
 ```
@@ -43,40 +45,47 @@ This document describes the data ingestion pipeline for the AI Product Research 
 ## Pipeline Components
 
 ### 1. CSV Loading
+
 - Reads `products_catalog.csv` using pandas
 - Validates required fields: `product_id`, `product_name`, `category`, `brand`, `description`
 
 ### 2. Text Processing
+
 Combines fields for semantic search:
+
 ```
 "{product_name} - {brand} - {category}: {description}"
 ```
 
 ### 3. Text Chunking
+
 For long descriptions, splits into chunks:
+
 - **Chunk size**: 512 characters
 - **Overlap**: 50 characters
 - Maintains context across chunks
 
 ### 4. Embedding Generation
+
 - **Model**: `sentence-transformers/all-MiniLM-L6-v2`
 - **Dimension**: 384
 - **Batch size**: 32 (configurable)
 
 ### 5. Vector Storage (Qdrant)
+
 Stores vectors with full metadata:
 
-| Field | Type | Indexed |
-|-------|------|---------|
-| product_id | keyword | ✅ |
-| product_name | text | ❌ |
-| category | keyword | ✅ |
-| brand | keyword | ✅ |
-| description | text | ❌ |
-| current_price | float | ✅ |
-| cost | float | ✅ |
-| stock_quantity | integer | ✅ |
-| average_rating | float | ✅ |
+| Field          | Type    | Indexed |
+| -------------- | ------- | ------- |
+| product_id     | keyword | ✅      |
+| product_name   | text    | ❌      |
+| category       | keyword | ✅      |
+| brand          | keyword | ✅      |
+| description    | text    | ❌      |
+| current_price  | float   | ✅      |
+| cost           | float   | ✅      |
+| stock_quantity | integer | ✅      |
+| average_rating | float   | ✅      |
 
 ## Incremental Update Strategy
 
@@ -162,9 +171,9 @@ results = pipeline.search("wireless headphones", limit=5)
 
 ## Configuration
 
-| Variable | Default | Description |
-|----------|---------|-------------|
-| QDRANT_HOST | localhost | Qdrant server host |
-| QDRANT_PORT | 6333 | Qdrant server port |
-| COLLECTION_NAME | products | Vector collection name |
+| Variable        | Default          | Description                |
+| --------------- | ---------------- | -------------------------- |
+| QDRANT_HOST     | localhost        | Qdrant server host         |
+| QDRANT_PORT     | 6333             | Qdrant server port         |
+| COLLECTION_NAME | products         | Vector collection name     |
 | EMBEDDING_MODEL | all-MiniLM-L6-v2 | Sentence Transformer model |
