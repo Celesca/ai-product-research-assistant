@@ -1,7 +1,6 @@
 import hashlib
 import pandas as pd
 from typing import List, Dict, Any, Optional
-from datetime import datetime
 from qdrant_client import QdrantClient
 from qdrant_client.http import models
 from qdrant_client.http.models import Distance, VectorParams, PointStruct
@@ -26,13 +25,35 @@ splits text into overlapping chunks to maintain semantic coherence.
 """
 
 class TextChunker:
-
+    """
+    Text chunker for splitting long product descriptions into overlapping chunks.
+    
+    This class splits text that exceeds the embedding model's optimal context length
+    into smaller, overlapping chunks to maintain semantic coherence and improve
+    embedding quality.
+    
+    Attributes:
+        chunk_size: Maximum character count per chunk (default: 512)
+        overlap: Number of characters to overlap between consecutive chunks (default: 50)
+    """
     
     def __init__(self, chunk_size: int = 512, overlap: int = 50):
         self.chunk_size = chunk_size
         self.overlap = overlap
     
-    def chunk(self, text: str) -> List[str]: # Split text into overlapping chunks. - List of text chunks
+    def chunk(self, text: str) -> List[str]:
+        """
+        Split text into overlapping chunks of specified size.
+        
+        Creates overlapping text chunks to preserve context at chunk boundaries.
+        If the text is shorter than chunk_size, returns it as a single chunk.
+        
+        Args:
+            text: The input text to be chunked
+            
+        Returns:
+            List of text chunks with configured overlap
+        """
         if len(text) <= self.chunk_size:
             return [text]
         
@@ -108,8 +129,9 @@ class ProductIngestionPipeline:
         self.embedding_service = EmbeddingService()
         self.chunker = TextChunker(chunk_size=chunk_size, overlap=chunk_overlap)
         
-        # Store last update timestamps for incremental updates
+        # Store last update timestamps and chunk info for incremental updates
         self._stored_timestamps: Dict[str, str] = {}
+        self._stored_chunk_counts: Dict[str, int] = {}
     
     def _product_id_to_point_id(self, product_id: str) -> int:
         # Extract numeric part from PROD-XXX format
@@ -150,6 +172,61 @@ class ProductIngestionPipeline:
             "supplier": str(row["supplier"]),
             "last_updated": str(row["last_updated"]),
         }
+    
+    def _cleanup_old_chunks(self, product_ids: set) -> None:
+        """
+        Delete all existing chunk points for products whose chunk count has changed.
+        
+        When a product's description length changes significantly, the number of chunks
+        it's split into may change. This method removes all old chunk points for such
+        products before new ones are upserted, preventing orphaned chunk points.
+        
+        Args:
+            product_ids: Set of product IDs that need their old chunks cleaned up
+        """
+        print(f"Cleaning up old chunks for {len(product_ids)} products with changed chunk counts...")
+        
+        # Delete points by filtering on product_id
+        for product_id in product_ids:
+            try:
+                # Use scroll to find all points for this product
+                offset = None
+                points_to_delete = []
+                
+                while True:
+                    result = self.client.scroll(
+                        collection_name=self.collection_name,
+                        scroll_filter=models.Filter(
+                            must=[
+                                models.FieldCondition(
+                                    key="product_id",
+                                    match=models.MatchValue(value=product_id)
+                                )
+                            ]
+                        ),
+                        limit=100,
+                        offset=offset
+                    )
+                    points, offset = result
+                    
+                    if not points:
+                        break
+                    
+                    points_to_delete.extend([point.id for point in points])
+                    
+                    if offset is None:
+                        break
+                
+                # Delete the points
+                if points_to_delete:
+                    self.client.delete(
+                        collection_name=self.collection_name,
+                        points_selector=models.PointIdsList(points=points_to_delete)
+                    )
+                    print(f"  Deleted {len(points_to_delete)} old chunk points for product {product_id}")
+                    
+            except Exception as e:
+                print(f"Warning: Could not cleanup chunks for product {product_id}: {e}")
     
     def create_collection(self, recreate: bool = False) -> None:
         """
@@ -278,10 +355,20 @@ class ProductIngestionPipeline:
         print(f"Processing {len(products_to_process)} products ({stats['skipped_products']} skipped as unchanged)...")
         all_chunks = []
         chunk_to_product = []  # Maps chunk index to product row
+        products_needing_cleanup = set()  # Track products whose chunk count changed
         
         for row in products_to_process:
+            product_id = str(row["product_id"])
             product_text = self._prepare_text_for_embedding(row)
-            chunks = self.chunker.chunk_product(product_text, str(row["product_id"]))
+            chunks = self.chunker.chunk_product(product_text, product_id)
+            
+            # Check if chunk count changed (need to cleanup old points)
+            new_chunk_count = len(chunks)
+            if product_id in self._stored_chunk_counts:
+                old_chunk_count = self._stored_chunk_counts[product_id]
+                if old_chunk_count != new_chunk_count:
+                    products_needing_cleanup.add(product_id)
+                    print(f"Product {product_id}: chunk count changed from {old_chunk_count} to {new_chunk_count}")
             
             for chunk_info in chunks:
                 all_chunks.append(chunk_info["text"])
@@ -289,6 +376,10 @@ class ProductIngestionPipeline:
         
         stats["total_chunks"] = len(all_chunks)
         print(f"Created {len(all_chunks)} chunks from {len(products_to_process)} products.")
+        
+        # Clean up old chunk points for products with changed chunk counts
+        if products_needing_cleanup:
+            self._cleanup_old_chunks(products_needing_cleanup)
         
         # Generate embeddings
         print("Generating embeddings...")
@@ -326,6 +417,12 @@ class ProductIngestionPipeline:
             points=points
         )
         
+        # Update stored chunk counts for processed products
+        for row, chunk_info in chunk_to_product:
+            product_id = str(row["product_id"])
+            self._stored_chunk_counts[product_id] = chunk_info["total_chunks"]
+            self._stored_timestamps[product_id] = str(row["last_updated"])
+        
         # Verify ingestion
         collection_info = self.client.get_collection(self.collection_name)
         vectors_count = collection_info.points_count
@@ -346,18 +443,26 @@ class ProductIngestionPipeline:
             **stats
         }
     
-    def _load_stored_timestamps(self) -> None: # Load existing product timestamps from Qdrant for incremental update detection.
+    def _load_stored_timestamps(self) -> None:
+        """
+        Load existing product timestamps and chunk metadata from Qdrant.
+        
+        This tracks both the last_updated timestamp and the number of chunks
+        per product to properly detect when re-chunking is needed (e.g., when
+        a product description changes significantly in length).
+        """
         try:
-            # Scroll through all points to get their last_updated timestamps
+            # Scroll through all points to get their last_updated timestamps and chunk info
             offset = None
             self._stored_timestamps = {}
+            self._stored_chunk_counts = {}
             
             while True:
                 result = self.client.scroll(
                     collection_name=self.collection_name,
                     limit=100,
                     offset=offset,
-                    with_payload=["product_id", "last_updated"]
+                    with_payload=["product_id", "last_updated", "total_chunks"]
                 )
                 points, offset = result
                 
@@ -368,8 +473,24 @@ class ProductIngestionPipeline:
                     if point.payload:
                         product_id = point.payload.get("product_id")
                         last_updated = point.payload.get("last_updated")
+                        total_chunks = point.payload.get("total_chunks", 1)
+                        
                         if product_id and last_updated:
-                            self._stored_timestamps[product_id] = last_updated
+                            if product_id not in self._stored_timestamps:
+                                # First occurrence: store the values
+                                self._stored_timestamps[product_id] = last_updated
+                                self._stored_chunk_counts[product_id] = total_chunks
+                            else:
+                                # Validate consistency for multi-chunk products
+                                # Use the maximum chunk count if there's inconsistency
+                                if total_chunks != self._stored_chunk_counts[product_id]:
+                                    print(f"Warning: Inconsistent chunk count for product {product_id}. "
+                                          f"Found {total_chunks} and {self._stored_chunk_counts[product_id]}. "
+                                          f"Using maximum value.")
+                                    self._stored_chunk_counts[product_id] = max(
+                                        total_chunks, 
+                                        self._stored_chunk_counts[product_id]
+                                    )
                 
                 if offset is None:
                     break
@@ -378,6 +499,7 @@ class ProductIngestionPipeline:
         except Exception as e:
             print(f"Warning: Could not load existing timestamps: {e}")
             self._stored_timestamps = {}
+            self._stored_chunk_counts = {}
     
     def search( # Search similar products
         self, 
