@@ -1,5 +1,7 @@
 # AI Product Research Assistant
 
+<img width="959" height="599" alt="image" src="https://github.com/user-attachments/assets/a4e6a1f2-bcef-4560-89db-64b78b8c3706" />
+
 An AI-powered product research assistant built with FastAPI, LangGraph, Qdrant, and Ollama. The system helps e-commerce teams make data-driven decisions about products through intelligent query routing and multi-tool orchestration.
 
 ## 🚀 Features
