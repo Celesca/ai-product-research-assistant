@@ -7,7 +7,7 @@ import os
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(__file__)))
 
-from src.tools.web_search import WebSearchTool
+from src.agent.tools.web_search import WebSearchTool
 
 
 class TestWebSearchTool:
@@ -15,8 +15,8 @@ class TestWebSearchTool:
     
     @pytest.fixture
     def tool(self):
-        """Create a WebSearchTool instance."""
-        return WebSearchTool()
+        """Create a WebSearchTool instance with no API keys (mock backend)."""
+        return WebSearchTool(tavily_api_key=None, serper_api_key=None)
     
     def test_mock_backend_used_without_api_keys(self, tool):
         """Test that mock backend is used when no API keys are configured."""

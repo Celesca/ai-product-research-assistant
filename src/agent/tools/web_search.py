@@ -22,22 +22,38 @@ class WebSearchTool:
     This tool searches external sources and returns relevant web results.
     """
     
+    # Sentinel value to distinguish between "not provided" and "explicitly None"
+    _NOT_PROVIDED = object()
+    
     def __init__(
         self,
-        tavily_api_key: str = None,
-        serper_api_key: str = None
+        tavily_api_key: str = _NOT_PROVIDED,
+        serper_api_key: str = _NOT_PROVIDED
     ):
-        self.tavily_api_key = tavily_api_key or settings.TAVILY_API_KEY
-        self.serper_api_key = serper_api_key or settings.SERPER_API_KEY
+        # Determine which backend to use based on explicitly passed keys first
+        # This allows tests to override environment settings
+        use_env_settings = (tavily_api_key is WebSearchTool._NOT_PROVIDED and 
+                           serper_api_key is WebSearchTool._NOT_PROVIDED)
         
-        # Determine which backend to use
+        if use_env_settings:
+            # Fall back to environment settings
+            self.tavily_api_key = settings.TAVILY_API_KEY
+            self.serper_api_key = settings.SERPER_API_KEY
+        else:
+            # Use explicitly passed values (None means no key)
+            self.tavily_api_key = tavily_api_key if tavily_api_key is not WebSearchTool._NOT_PROVIDED else None
+            self.serper_api_key = serper_api_key if serper_api_key is not WebSearchTool._NOT_PROVIDED else None
+        
+        # Determine backend based on available keys
         if self.tavily_api_key:
             self.backend = "tavily"
         elif self.serper_api_key:
             self.backend = "serper"
         else:
             self.backend = "mock"
-            print("Warning: No web search API key configured. Using mock data.")
+            if use_env_settings:
+                print("Warning: No web search API key configured. Using mock data.")
+                print("Warning: No web search API key configured. Using mock data.")
     
     async def search_tavily(self, query: str, limit: int = 5) -> Dict[str, Any]:
         async with httpx.AsyncClient() as client:
