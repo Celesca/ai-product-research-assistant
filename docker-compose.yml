@@ -51,7 +51,7 @@ services:
       - DATABASE_URL=sqlite:///./data/app.db
       - COLLECTION_NAME=products
     volumes:
-      - ./data:/app/data
+      - ./data:/app/data  # Persist data including SQLite database
       - ./src:/app/src
     depends_on:
       - qdrant

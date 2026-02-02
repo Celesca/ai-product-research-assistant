@@ -7,11 +7,13 @@ from typing import Optional, List, Dict, Any
 class QueryRequest(BaseModel):
     """Request model for the query endpoint."""
     query: str = Field(..., description="The user's query", min_length=1, max_length=2000)
+    conversation_id: Optional[int] = Field(None, description="Optional conversation ID for multi-turn context")
     
     class Config:
         json_schema_extra = {
             "example": {
-                "query": "What wireless headphones do we have in stock?"
+                "query": "What wireless headphones do we have in stock?",
+                "conversation_id": 1
             }
         }
 
@@ -219,3 +221,52 @@ class StructuredQueryResponse(BaseModel):
             }
         }
 
+
+# --- Conversation Models (Multi-Turn Support) ---
+
+class ConversationCreate(BaseModel):
+    """Request model for creating a new conversation."""
+    title: Optional[str] = Field(None, max_length=255, description="Optional title for the conversation")
+    
+    class Config:
+        json_schema_extra = {
+            "example": {
+                "title": "Product Research Session"
+            }
+        }
+
+
+class MessageResponse(BaseModel):
+    """Response model for a single message in a conversation."""
+    id: int
+    role: str = Field(description="Message role: 'user' or 'assistant'")
+    content: str
+    tools_used: Optional[List[str]] = None
+    confidence: Optional[float] = None
+    execution_time_ms: Optional[int] = None
+    created_at: str
+
+
+class ConversationResponse(BaseModel):
+    """Response model for a conversation summary."""
+    id: int
+    title: Optional[str]
+    created_at: str
+    updated_at: str
+    message_count: int
+
+
+class ConversationDetailResponse(BaseModel):
+    """Response model for a conversation with all messages."""
+    id: int
+    title: Optional[str]
+    created_at: str
+    updated_at: str
+    messages: List[MessageResponse]
+
+
+class ConversationsListResponse(BaseModel):
+    """Response model for listing conversations."""
+    status: str
+    total: int
+    conversations: List[ConversationResponse]

@@ -267,12 +267,13 @@ class ResearchAgent:
         
         return workflow.compile()
     
-    async def aquery(self, query: str) -> Dict[str, Any]:
+    async def aquery(self, query: str, conversation_history: Optional[List[Dict[str, str]]] = None) -> Dict[str, Any]:
         """
         Process a query asynchronously.
         
         Args:
             query: The user's query
+            conversation_history: Optional list of previous messages in format [{"role": "user"|"assistant", "content": "..."}]
             
         Returns:
             Dictionary with structured response including products, sources, and confidence
@@ -280,9 +281,24 @@ class ResearchAgent:
         import time
         start_time = time.time()
         
+        # Build message list with conversation history
+        messages = []
+        
+        # Add previous conversation messages if provided
+        if conversation_history:
+            for msg in conversation_history:
+                if msg["role"] == "user":
+                    messages.append(HumanMessage(content=msg["content"]))
+                elif msg["role"] == "assistant":
+                    messages.append(AIMessage(content=msg["content"]))
+            logger.info(f"📜 Loaded {len(conversation_history)} previous messages for context")
+        
+        # Add current query
+        messages.append(HumanMessage(content=query))
+        
         # Initialize state
         initial_state: AgentState = {
-            "messages": [HumanMessage(content=query)],
+            "messages": messages,
             "tools_used": [],
             "reasoning": "",
             "final_answer": "",
@@ -428,17 +444,18 @@ class ResearchAgent:
                 "error": str(e)
             }
     
-    def query(self, query: str) -> Dict[str, Any]:
+    def query(self, query: str, conversation_history: Optional[List[Dict[str, str]]] = None) -> Dict[str, Any]:
         """
         Process a query synchronously.
         
         Args:
             query: The user's query
+            conversation_history: Optional list of previous messages for context
             
         Returns:
             Dictionary with response, tools used, reasoning, and confidence
         """
-        return asyncio.run(self.aquery(query))
+        return asyncio.run(self.aquery(query, conversation_history=conversation_history))
 
 
 def create_agent(
