@@ -90,11 +90,21 @@ class ResearchAgent:
             in_stock: Optional[bool] = None,
             limit: int = 5
         ) -> str:
-            """
-            Search the internal product catalog for products matching the query.
-            Use this for finding products by description, features, category, brand, or specifications in the catalog.
-            Returns product details including price, stock, ratings, and margin information.
-            """
+            """Search our INTERNAL product catalog database for products we sell.
+
+USE THIS TOOL WHEN the user asks about:
+- Products WE have/sell/stock ("What headphones do we have?")
+- Our inventory or stock levels ("Is X in stock?")
+- Our product details, prices, ratings ("Show me our electronics under $100")
+- Products by brand/category in OUR catalog ("AudioMax products", "our fitness equipment")
+- Finding specific products WE carry ("Do we sell wireless earbuds?")
+
+DO NOT USE when user asks about:
+- Competitor prices or market prices (use web_search)
+- External reviews or market trends (use web_search)
+- Profit margins or margin analysis (use price_analysis)
+
+Returns: Product details including name, price, cost, stock quantity, ratings, and category."""
             logger.info(f"🔍 [TOOL] product_catalog_search executing...")
             logger.info(f"   └─ Query: '{query}' | Filters: category={category}, brand={brand}")
             
@@ -120,11 +130,22 @@ class ResearchAgent:
         # Web search tool
         @tool("web_search", args_schema=WebSearchInput)
         def web_search(query: str, limit: int = 5) -> str:
-            """
-            Search the web for market trends, competitor pricing, and external information.
-            Use this for current market prices, competitor products, reviews, or trends
-            that are not in the internal product catalog.
-            """
+            """Search the EXTERNAL web for market information, competitors, and trends.
+
+USE THIS TOOL WHEN the user asks about:
+- Market prices or competitor prices ("What's the market price for X?")
+- External product reviews ("Latest reviews for Sony WH-1000XM5")
+- Market trends ("Trending products in fitness")
+- Competitor information ("What are competitors charging?")
+- Industry news or external data not in our catalog
+- Price comparisons with the market ("How do our prices compare?")
+
+DO NOT USE when user asks about:
+- Our own products/inventory (use product_catalog_search)
+- Our profit margins (use price_analysis)
+- Products we sell or have in stock (use product_catalog_search)
+
+Returns: Web search results with titles, URLs, content snippets, and AI-generated summary."""
             logger.info(f"🌐 [TOOL] web_search executing...")
             logger.info(f"   └─ Query: '{query}' | Limit: {limit}")
             
@@ -147,6 +168,30 @@ class ResearchAgent:
             threshold: float = 40.0,
             limit: int = 10
         ) -> str:
+            """Analyze profit margins and pricing for products in our catalog.
+
+USE THIS TOOL WHEN the user asks about:
+- Profit margins ("Which products have lowest margins?", "What's the margin on X?")
+- Margin analysis by category/brand ("Average margin for Electronics")
+- Products below/above margin thresholds ("Products with margins below 40%")
+- Pricing recommendations based on margins
+- Profitability analysis ("Most/least profitable products")
+- Cost vs price analysis
+
+ANALYSIS TYPES available:
+- "lowest_margins": Find products with lowest profit margins
+- "highest_margins": Find products with highest profit margins  
+- "below_threshold": Find products with margins below threshold (default 40%)
+- "above_threshold": Find products with margins above threshold
+- "category_summary": Get margin statistics for a category
+- "brand_summary": Get margin statistics for a brand
+
+DO NOT USE when user asks about:
+- Finding products by features (use product_catalog_search)
+- Market/competitor prices (use web_search)
+- Stock levels or ratings (use product_catalog_search)
+
+Returns: Margin calculations using formula: margin = ((price - cost) / price) × 100"""
             logger.info(f"📊 [TOOL] price_analysis executing...")
             logger.info(f"   └─ Type: {analysis_type} | Category: {category} | Brand: {brand}")
             
@@ -186,28 +231,73 @@ class ResearchAgent:
                 logger.info(f"📝 User Query: {messages[0].content}")
                 logger.info("=" * 60)
             
-            # If this is the first message, add system context
+            # If this is the first message, add system context (Few-shot prompt)
             if len(messages) == 1:
-                system_message = SystemMessage(content="""You are an AI Product Research Assistant. Your job is to help users with product research.
+                system_message = SystemMessage(content="""You are an AI Product Research Assistant for an e-commerce company. You help users research products, analyze pricing, and understand market trends.
 
-**Available Tools:**
-1. **product_catalog_search**: Search internal product catalog for products, stock levels, prices, ratings
-2. **web_search**: Search web for market trends, competitor prices, reviews
-3. **price_analysis**: Analyze pricing and profit margins (uses formula: margin = ((price - cost) / price) × 100)
+## YOUR TOOLS
 
-**Tool Selection:**
-- Internal product queries → product_catalog_search
-- External market data → web_search
-- Margin analysis → price_analysis
+### 1. product_catalog_search
+Search OUR internal product database. Use for:
+- "What [products] do we have/sell/stock?" → Search our catalog
+- "Show me our [category] products" → Search with category filter
+- "Do we carry [brand]?" → Search with brand filter
+- "Products under $X" → Search with price filter
+- "What's in stock?" → Search with in_stock=true
 
-**CRITICAL RESPONSE FORMAT:**
-- Provide a BRIEF, CONCISE summary (1-3 sentences max)
-- Do NOT list out individual products - the structured data is returned separately
-- Focus on insights and key findings, not raw data
-- Example good answer: "Found 5 wireless headphones in stock, prices range from $29.99 to $129.99. Top rated is AudioMax at 4.5 stars."
-- Example bad answer: Listing every product with all its details
+### 2. web_search  
+Search the EXTERNAL web. Use for:
+- "What's the market price for X?" → External pricing
+- "Competitor prices for X" → Market research
+- "Latest reviews for [product]" → External reviews
+- "Trending products in [category]" → Market trends
+- "How do our prices compare?" → Needs web_search for market data
 
-**For price analysis:** NEVER calculate margins yourself - use the price_analysis tool.""")
+### 3. price_analysis
+Analyze profit MARGINS. Use for:
+- "Which products have lowest/highest margins?" → margin analysis
+- "Products with margins below X%" → threshold analysis
+- "Average margin for [category/brand]" → summary analysis
+- "Most/least profitable products" → margin ranking
+- "Should we adjust pricing?" → needs margin data
+
+## ROUTING DECISION TREE
+
+```
+Is the query about MARGINS/PROFITABILITY/COST analysis?
+  YES → price_analysis
+  NO ↓
+
+Is the query about EXTERNAL market/competitors/trends/reviews?
+  YES → web_search
+  NO ↓
+
+Is the query about OUR products/inventory/catalog?
+  YES → product_catalog_search
+  NO ↓
+
+Need MULTIPLE perspectives (our prices vs market)?
+  YES → Use multiple tools
+```
+
+## MULTI-TOOL QUERIES
+Some queries need multiple tools:
+- "Should we lower AudioMax prices vs competitors?" 
+  → product_catalog_search (our prices) + web_search (competitor prices)
+- "Which of our low-margin products have good market demand?"
+  → price_analysis (margins) + web_search (market demand)
+
+## RESPONSE FORMAT
+After getting tool results:
+1. Provide a BRIEF summary (2-3 sentences max)
+2. Highlight key insights and actionable findings
+3. Do NOT list every product - structured data is returned separately
+4. Be specific with numbers and facts from the tool results
+
+## IMPORTANT
+- NEVER calculate margins yourself - always use price_analysis tool
+- For margin questions, set appropriate analysis_type parameter
+- Use filters (category, brand, price range) when the user specifies them""")
                 messages = [system_message] + list(messages)
                 logger.info("📋 System prompt injected")
             
