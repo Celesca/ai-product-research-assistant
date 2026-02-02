@@ -137,6 +137,9 @@ cd load_tests
 locust -f locustfile.py --host=http://localhost:8000
 ```
 
+<img width="1868" height="850" alt="image" src="https://github.com/user-attachments/assets/79eb435f-7520-4192-815c-5e86448e6a2a" />
+
+
 ## 🏗️ Short Architecture
 
 ```
@@ -152,6 +155,9 @@ locust -f locustfile.py --host=http://localhost:8000
   │   (Qdrant)   │  │ (Tavily/API) │                        │ (Deterministic)│
   └──────────────┘  └──────────────┘                        └────────────────┘
 ```
+
+<img width="687" height="571" alt="system_architecture drawio" src="https://github.com/user-attachments/assets/5e2939a7-b683-4ab3-bfe4-e16adce869a0" />
+
 
 See [architecture/ARCHITECTURE.md](architecture/ARCHITECTURE.md) for detailed documentation.
 
