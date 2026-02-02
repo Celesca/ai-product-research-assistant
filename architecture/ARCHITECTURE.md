@@ -400,7 +400,7 @@ For higher load:
 
 ## Monitoring & Observability
 
-### Recommended Stack
+### In the future
 
 ```
 ┌────────────────────────────────────────────────┐
