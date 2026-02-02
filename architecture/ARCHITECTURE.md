@@ -4,174 +4,6 @@
 
 The AI Product Research Assistant is a modular, containerized application that combines RAG (Retrieval Augmented Generation), web search, and deterministic price analysis to help product teams make data-driven decisions.
 
-## Architecture Diagram
-
-```
-┌─────────────────────────────────────────────────────────────────────────────┐
-│                              CLIENT LAYER                                    │
-│                                                                              │
-│    ┌──────────┐    ┌──────────┐    ┌──────────┐    ┌──────────┐            │
-│    │   Web    │    │   CLI    │    │   API    │    │  Locust  │            │
-│    │  Client  │    │  Client  │    │  Tests   │    │  Tests   │            │
-│    └────┬─────┘    └────┬─────┘    └────┬─────┘    └────┬─────┘            │
-│         │               │               │               │                   │
-└─────────┼───────────────┼───────────────┼───────────────┼───────────────────┘
-          │               │               │               │
-          └───────────────┴───────────────┴───────────────┘
-                                  │
-                                  ▼
-┌─────────────────────────────────────────────────────────────────────────────┐
-│                              API LAYER                                       │
-│                                                                              │
-│    ┌────────────────────────────────────────────────────────────────────┐   │
-│    │                         FastAPI Server                              │   │
-│    │                                                                     │   │
-│    │   POST /query    GET /queries    POST /feedback    GET /health     │   │
-│    │                                                                     │   │
-│    └────────────────────────────────────────────────────────────────────┘   │
-│                                  │                                           │
-└──────────────────────────────────┼───────────────────────────────────────────┘
-                                   │
-                                   ▼
-┌─────────────────────────────────────────────────────────────────────────────┐
-│                            AGENT LAYER                                       │
-│                                                                              │
-│    ┌────────────────────────────────────────────────────────────────────┐   │
-│    │                    LangGraph Research Agent                         │   │
-│    │                                                                     │   │
-│    │   ┌──────────────┐  ┌─────────────────────────────────────────┐    │   │
-│    │   │    Query     │  │           Tool Selection                 │    │   │
-│    │   │   Analysis   │──│                                          │    │   │
-│    │   └──────────────┘  │  ┌──────────┐ ┌────────┐ ┌───────────┐  │    │   │
-│    │                     │  │ Product  │ │  Web   │ │   Price   │  │    │   │
-│    │                     │  │ Catalog  │ │ Search │ │  Analysis │  │    │   │
-│    │                     │  │   RAG    │ │        │ │           │  │    │   │
-│    │                     │  └────┬─────┘ └───┬────┘ └─────┬─────┘  │    │   │
-│    │                     └───────┼───────────┼────────────┼────────┘    │   │
-│    │                             │           │            │              │   │
-│    └─────────────────────────────┼───────────┼────────────┼──────────────┘   │
-│                                  │           │            │                   │
-└──────────────────────────────────┼───────────┼────────────┼───────────────────┘
-                                   │           │            │
-                    ┌──────────────┘           │            └──────────────┐
-                    │                          │                           │
-                    ▼                          ▼                           ▼
-┌─────────────────────────┐    ┌─────────────────────────┐    ┌─────────────────┐
-│     VECTOR STORE        │    │     EXTERNAL API        │    │   CALCULATIONS  │
-│                         │    │                         │    │                 │
-│  ┌───────────────────┐  │    │  ┌───────────────────┐  │    │  Deterministic  │
-│  │      Qdrant       │  │    │  │   Tavily/Serper   │  │    │    Functions    │
-│  │                   │  │    │  │   (or Mock Data)  │  │    │                 │
-│  │  - Products Index │  │    │  └───────────────────┘  │    │  - Margins      │
-│  │  - Embeddings     │  │    │                         │    │  - Profits      │
-│  │  - Metadata       │  │    └─────────────────────────┘    │  - Markup       │
-│  └───────────────────┘  │                                   │                 │
-│                         │                                   └─────────────────┘
-└─────────────────────────┘
-
-┌─────────────────────────────────────────────────────────────────────────────┐
-│                              LLM SERVICE                                     │
-│                                                                              │
-│    ┌────────────────────────────────────────────────────────────────────┐   │
-│    │                           Ollama                                    │   │
-│    │                                                                     │   │
-│    │     llama3.2 / mistral / other compatible models                   │   │
-│    │                                                                     │   │
-│    └────────────────────────────────────────────────────────────────────┘   │
-│                                                                              │
-└──────────────────────────────────────────────────────────────────────────────┘
-
-┌─────────────────────────────────────────────────────────────────────────────┐
-│                            STORAGE LAYER                                     │
-│                                                                              │
-│    ┌────────────────────┐              ┌────────────────────┐               │
-│    │     SQLite DB      │              │   File Storage     │               │
-│    │                    │              │                    │               │
-│    │  - Query History   │              │  - Products CSV    │               │
-│    │  - User Feedback   │              │  - Logs            │               │
-│    │                    │              │                    │               │
-│    └────────────────────┘              └────────────────────┘               │
-│                                                                              │
-└──────────────────────────────────────────────────────────────────────────────┘
-```
-
-## Component Details
-
-### 1. API Layer (FastAPI)
-
-The API layer handles all HTTP requests and provides:
-
-- **POST /query**: Main endpoint for processing user queries
-- **GET /queries**: Retrieve query history
-- **POST /feedback**: Submit user feedback
-- **GET /health**: Health check for all services
-
-**Technologies:**
-
-- FastAPI for high-performance async API
-- Pydantic for request/response validation
-- CORS middleware for cross-origin requests
-
-### 2. Agent Layer (LangGraph)
-
-The intelligent routing layer that:
-
-1. Analyzes incoming queries
-2. Decides which tool(s) to use
-3. Orchestrates tool execution
-4. Generates coherent responses
-
-**Key Features:**
-
-- State machine-based workflow using LangGraph
-- Tool binding with Ollama
-- Automatic retry and error handling
-- Multi-tool query support
-
-### 3. Tools Layer
-
-#### Tool 1: Product Catalog RAG
-
-- Semantic search over product descriptions
-- Metadata filtering (category, brand, price, rating)
-- Returns structured product information
-
-#### Tool 2: Web Search
-
-- Market trend research
-- Competitor price lookup
-- External product reviews
-- Falls back to mock data if no API key
-
-#### Tool 3: Price Analysis
-
-- **Deterministic calculations** (no LLM math)
-- Margin formula: `((price - cost) / price) × 100`
-- Category/brand analysis
-- Threshold-based filtering
-
-### 4. Data Layer
-
-#### Qdrant Vector Database
-
-- Stores product embeddings
-- Fast similarity search
-- Payload indexes for filtering
-- Supports incremental updates
-
-#### SQLite Database
-
-- Query history storage
-- User feedback tracking
-- Lightweight and portable
-
-### 5. LLM Service (Ollama)
-
-- Local LLM inference
-- No API costs
-- Supports multiple models (llama3.2, mistral, etc.)
-- GPU acceleration available
-
 ## Data Flow
 
 ### Query Processing Flow
@@ -314,6 +146,8 @@ For higher load:
 | Web search    | 200-500ms       |
 | Database      | 1-10ms          |
 
+You can see that LLM inference is took the longest time, so we need to optimize it.
+
 **Optimization strategies:**
 
 - Response caching for common queries
@@ -331,7 +165,7 @@ For higher load:
 
 **Cost optimization:**
 
-- Use smaller models for simple queries
+- Use smaller models for simple queries (or using API provider)
 - Cache embeddings and responses
 - Batch similar queries
 
@@ -380,7 +214,7 @@ For higher load:
 **Cons:**
 
 - Per-request costs
-- Data leaves your infrastructure
+- Data leaves your infrastructure !!
 - Rate limits and quotas
 
 ### Vector Database Choice: Qdrant
@@ -424,12 +258,12 @@ For higher load:
 - LLM token usage
 - Vector search latency
 - Memory and CPU usage
+- What did they think?
 
 ## Future Enhancements
 
-1. **Multi-turn Conversations**: Add conversation memory
-2. **Caching Layer**: Redis for response caching
-3. **Admin Dashboard**: UI for monitoring and management
-4. **A/B Testing**: Compare different models/prompts
-5. **Real-time Updates**: WebSocket for live catalog changes
-6. **Advanced Analytics**: Query pattern analysis
+1. **Caching Layer**: Redis for response caching
+2. **Admin Dashboard**: UI for monitoring and management
+3. **A/B Testing**: Compare different models/prompts
+4. **Real-time Updates**: WebSocket for live catalog changes
+5. **Advanced Analytics**: Query pattern analysis

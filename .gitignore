@@ -10,3 +10,5 @@ venv
 docker-compose.yml
 
 .env
+
+data/app.db

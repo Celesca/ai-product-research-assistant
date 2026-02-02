@@ -8,7 +8,7 @@ import os
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(__file__)))
 
-from src.tools.price_analysis import calculate_margin, calculate_profit, calculate_markup
+from src.agent.tools.price_analysis import calculate_margin, calculate_profit, calculate_markup
 
 
 class TestCalculateMargin:
@@ -67,7 +67,7 @@ class TestCalculateProfit:
     
     def test_decimal_values(self):
         """Test profit with decimal values."""
-        assert calculate_profit(129.99, 65.00) == 64.99
+        assert calculate_profit(129.99, 65.00) == pytest.approx(64.99)
 
 
 class TestCalculateMarkup:

@@ -93,7 +93,7 @@ function App() {
       const assistantMessage: Message = {
         id: Date.now() + 1,
         role: 'assistant',
-        content: response.response,
+        content: response.answer,
         tools_used: response.tools_used,
         confidence: response.confidence,
         execution_time_ms: response.execution_time_ms,

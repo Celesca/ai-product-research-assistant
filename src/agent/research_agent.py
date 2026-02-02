@@ -92,7 +92,7 @@ class ResearchAgent:
         ) -> str:
             """
             Search the internal product catalog for products matching the query.
-            Use this for finding products by description, features, category, brand, or specifications.
+            Use this for finding products by description, features, category, brand, or specifications in the catalog.
             Returns product details including price, stock, ratings, and margin information.
             """
             logger.info(f"🔍 [TOOL] product_catalog_search executing...")
