@@ -1,13 +1,16 @@
-The problem is the model is really small to test on this project.
+# Feedback Journey
 
-So, I ran back to fix the prompt and the system prompt to make it more efficient.
+## Recent Updates
 
-I also added a new tool to search the web for market trends and competitor information.
+- **Prompt Optimization**: Refined prompts and system prompts to maximize efficiency for the small model.
+  (It's pretty hard to make the small model to understand the instruction and select the right tool)
 
-And I added a new tool to calculate margins and provide recommendations.
+## Current Issues
 
-## The sentence transformers and LLM doesn't have warm-up load
+- **Performance**: Sentence transformers and LLMs lack a warm-up load.
+- **Testing**: Test suite is failing due to issues with database connection mocks.
 
-## The Test Feedback doesn't passed all there's problem in the prompt
+## Lessons Learned
 
-What I have learned is the unit testing is very important to see the bugs.
+- **Unit Testing**: Essential for early bug detection and system stability.
+- **Future Focus**: Need to further study model metrics and evaluation techniques.
