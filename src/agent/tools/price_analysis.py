@@ -67,12 +67,6 @@ def calculate_markup(price: float, cost: float) -> float:
 
 
 class PriceAnalysisTool:
-    """
-    Tool for analyzing product pricing and profit margins.
-    
-    All calculations are deterministic using predefined functions.
-    The LLM is only used to format and explain results, not to perform calculations.
-    """
     
     name: str = "price_analysis"
     description: str = """
@@ -96,14 +90,6 @@ class PriceAnalysisTool:
         qdrant_port: int = None,
         collection_name: str = None
     ):
-        """
-        Initialize the Price Analysis tool.
-        
-        Args:
-            qdrant_host: Qdrant server host
-            qdrant_port: Qdrant server port
-            collection_name: Name of the Qdrant collection
-        """
         self.qdrant_host = qdrant_host or settings.QDRANT_HOST
         self.qdrant_port = qdrant_port or settings.QDRANT_PORT
         self.collection_name = collection_name or settings.COLLECTION_NAME
@@ -111,15 +97,6 @@ class PriceAnalysisTool:
         self.client = QdrantClient(host=self.qdrant_host, port=self.qdrant_port)
     
     def _get_all_products(self, limit: int = 200) -> List[Dict[str, Any]]:
-        """
-        Retrieve all products from the database.
-        
-        Args:
-            limit: Maximum number of products to retrieve
-            
-        Returns:
-            List of product dictionaries
-        """
         results = self.client.scroll(
             collection_name=self.collection_name,
             limit=limit
@@ -139,7 +116,6 @@ class PriceAnalysisTool:
         return products
     
     def _get_products_by_category(self, category: str, limit: int = 100) -> List[Dict[str, Any]]:
-        """Get products filtered by category."""
         results = self.client.scroll(
             collection_name=self.collection_name,
             scroll_filter=models.Filter(
@@ -166,7 +142,6 @@ class PriceAnalysisTool:
         return products
     
     def _get_products_by_brand(self, brand: str, limit: int = 100) -> List[Dict[str, Any]]:
-        """Get products filtered by brand."""
         results = self.client.scroll(
             collection_name=self.collection_name,
             scroll_filter=models.Filter(
@@ -194,21 +169,10 @@ class PriceAnalysisTool:
     
     def get_products_with_lowest_margins(
         self, 
-        limit: int = 10,
-        category: Optional[str] = None,
-        brand: Optional[str] = None
+        limit: int = 10, # Number of products to return
+        category: Optional[str] = None, # Filter by category (optional)
+        brand: Optional[str] = None # Filter by brand (optional)
     ) -> Dict[str, Any]:
-        """
-        Get products with the lowest profit margins.
-        
-        Args:
-            limit: Number of products to return
-            category: Filter by category (optional)
-            brand: Filter by brand (optional)
-            
-        Returns:
-            Dictionary with low-margin products and statistics
-        """
         try:
             if category:
                 products = self._get_products_by_category(category)
@@ -262,17 +226,6 @@ class PriceAnalysisTool:
         category: Optional[str] = None,
         brand: Optional[str] = None
     ) -> Dict[str, Any]:
-        """
-        Get products with the highest profit margins.
-        
-        Args:
-            limit: Number of products to return
-            category: Filter by category (optional)
-            brand: Filter by brand (optional)
-            
-        Returns:
-            Dictionary with high-margin products and statistics
-        """
         try:
             if category:
                 products = self._get_products_by_category(category)
@@ -326,17 +279,6 @@ class PriceAnalysisTool:
         category: Optional[str] = None,
         brand: Optional[str] = None
     ) -> Dict[str, Any]:
-        """
-        Get products with margins below a specified threshold.
-        
-        Args:
-            threshold: Margin percentage threshold (default: 40%)
-            category: Filter by category (optional)
-            brand: Filter by brand (optional)
-            
-        Returns:
-            Dictionary with products below threshold and recommendations
-        """
         try:
             if category:
                 products = self._get_products_by_category(category)
@@ -394,15 +336,6 @@ class PriceAnalysisTool:
             }
     
     def get_category_margin_analysis(self, category: str) -> Dict[str, Any]:
-        """
-        Get detailed margin analysis for a specific category.
-        
-        Args:
-            category: The category to analyze
-            
-        Returns:
-            Dictionary with category analysis
-        """
         try:
             products = self._get_products_by_category(category)
             
@@ -463,15 +396,6 @@ class PriceAnalysisTool:
             }
     
     def get_brand_margin_analysis(self, brand: str) -> Dict[str, Any]:
-        """
-        Get detailed margin analysis for a specific brand.
-        
-        Args:
-            brand: The brand to analyze
-            
-        Returns:
-            Dictionary with brand analysis
-        """
         try:
             products = self._get_products_by_brand(brand)
             
@@ -532,24 +456,6 @@ class PriceAnalysisTool:
         threshold: float = 40.0,
         limit: int = 10
     ) -> Dict[str, Any]:
-        """
-        Main analysis function that routes to specific analysis methods.
-        
-        Args:
-            analysis_type: Type of analysis to perform
-                - "lowest_margins": Find products with lowest margins
-                - "highest_margins": Find products with highest margins
-                - "below_threshold": Find products below margin threshold
-                - "category_analysis": Detailed category analysis
-                - "brand_analysis": Detailed brand analysis
-            category: Filter by category
-            brand: Filter by brand
-            threshold: Margin threshold for "below_threshold" analysis
-            limit: Number of products to return
-            
-        Returns:
-            Analysis results dictionary
-        """
         if analysis_type == "lowest_margins":
             return self.get_products_with_lowest_margins(limit, category, brand)
         elif analysis_type == "highest_margins":
@@ -571,7 +477,6 @@ class PriceAnalysisTool:
         threshold: float = 40.0,
         limit: int = 10
     ) -> Dict[str, Any]:
-        """Make the tool callable directly."""
         return self.analyze(
             analysis_type=analysis_type,
             category=category,

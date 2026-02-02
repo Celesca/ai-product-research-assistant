@@ -14,38 +14,25 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.dirname(__file__))))
 from src.utils.config import config
 from src.utils.embeddings import EmbeddingService
 
+"""
+
+Text chunker for splitting long product descriptions.
+
+Pipeline Stage: CSV → Processing → **Chunking** → Embeddings → Vector DB
+
+For product descriptions that exceed the embedding model's optimal context,
+splits text into overlapping chunks to maintain semantic coherence.
+
+"""
 
 class TextChunker:
-    """
-    Text chunker for splitting long product descriptions.
-    
-    Pipeline Stage: CSV → Processing → **Chunking** → Embeddings → Vector DB
-    
-    For product descriptions that exceed the embedding model's optimal context,
-    splits text into overlapping chunks to maintain semantic coherence.
-    """
+
     
     def __init__(self, chunk_size: int = 512, overlap: int = 50):
-        """
-        Initialize the text chunker.
-        
-        Args:
-            chunk_size: Maximum characters per chunk.
-            overlap: Characters to overlap between chunks.
-        """
         self.chunk_size = chunk_size
         self.overlap = overlap
     
-    def chunk(self, text: str) -> List[str]:
-        """
-        Split text into overlapping chunks.
-        
-        Args:
-            text: The text to chunk.
-            
-        Returns:
-            List of text chunks.
-        """
+    def chunk(self, text: str) -> List[str]: # Split text into overlapping chunks. - List of text chunks
         if len(text) <= self.chunk_size:
             return [text]
         
@@ -103,8 +90,6 @@ class ProductIngestionPipeline:
     - Generates text embeddings using Sentence Transformers
     - Stores vectors with full metadata for filtering
     - Supports incremental updates (upsert by product_id, skips unchanged)
-    
-    See INGESTION.md for full documentation.
     """
     
     def __init__(
@@ -115,16 +100,6 @@ class ProductIngestionPipeline:
         chunk_size: int = 512,
         chunk_overlap: int = 50
     ):
-        """
-        Initialize the ingestion pipeline.
-        
-        Args:
-            qdrant_host: Qdrant server host (default: from config)
-            qdrant_port: Qdrant server port (default: from config)
-            collection_name: Name of the collection to use (default: from config)
-            chunk_size: Maximum characters per text chunk (default: 512)
-            chunk_overlap: Characters to overlap between chunks (default: 50)
-        """
         self.qdrant_host = qdrant_host or config.QDRANT_HOST
         self.qdrant_port = qdrant_port or config.QDRANT_PORT
         self.collection_name = collection_name or config.COLLECTION_NAME
@@ -137,11 +112,6 @@ class ProductIngestionPipeline:
         self._stored_timestamps: Dict[str, str] = {}
     
     def _product_id_to_point_id(self, product_id: str) -> int:
-        """
-        Convert product_id string to a numeric point ID.
-        
-        Uses hash to ensure consistent IDs across runs, enabling upserts.
-        """
         # Extract numeric part from PROD-XXX format
         if product_id.startswith("PROD-"):
             try:
@@ -154,11 +124,6 @@ class ProductIngestionPipeline:
         return int.from_bytes(hash_bytes[:8], byteorder='big') % (2**63)
     
     def _prepare_text_for_embedding(self, row: pd.Series) -> str:
-        """
-        Prepare product text for embedding generation.
-        
-        Combines relevant fields into a searchable text representation.
-        """
         return (
             f"{row['product_name']} - {row['brand']} - {row['category']}: "
             f"{row['description']}"
@@ -241,16 +206,7 @@ class ProductIngestionPipeline:
         
         print("Collection created with indexes.")
     
-    def load_products(self, csv_path: str = None) -> pd.DataFrame:
-        """
-        Load products from CSV file.
-        
-        Args:
-            csv_path: Path to the CSV file (default: from config)
-            
-        Returns:
-            DataFrame with product data.
-        """
+    def load_products(self, csv_path: str = None) -> pd.DataFrame: # Load products from CSV file.
         csv_path = csv_path or config.PRODUCTS_CSV
         print(f"Loading products from: {csv_path}")
         
@@ -267,18 +223,9 @@ class ProductIngestionPipeline:
         skip_unchanged: bool = True
     ) -> Dict[str, Any]:
         """
-        Run the full ingestion pipeline with incremental update support.
         
         Pipeline: CSV → Processing → Chunking → Embeddings → Vector DB
-        
-        Args:
-            csv_path: Path to the products CSV file.
-            recreate_collection: If True, recreate the collection from scratch.
-            batch_size: Number of products to process at once.
-            skip_unchanged: If True, skip products that haven't changed (based on last_updated).
-            
-        Returns:
-            Dictionary with ingestion statistics including new/updated/skipped counts.
+
         """
         # Load products
         df = self.load_products(csv_path)
@@ -399,10 +346,7 @@ class ProductIngestionPipeline:
             **stats
         }
     
-    def _load_stored_timestamps(self) -> None:
-        """
-        Load existing product timestamps from Qdrant for incremental update detection.
-        """
+    def _load_stored_timestamps(self) -> None: # Load existing product timestamps from Qdrant for incremental update detection.
         try:
             # Scroll through all points to get their last_updated timestamps
             offset = None
@@ -435,23 +379,12 @@ class ProductIngestionPipeline:
             print(f"Warning: Could not load existing timestamps: {e}")
             self._stored_timestamps = {}
     
-    def search(
+    def search( # Search similar products
         self, 
         query: str, 
-        limit: int = 5,
+        limit: int = 5, # Maximum number of results to return.
         filters: Optional[Dict[str, Any]] = None
     ) -> List[Dict[str, Any]]:
-        """
-        Search for products similar to the query.
-        
-        Args:
-            query: Search query text.
-            limit: Maximum number of results to return.
-            filters: Optional Qdrant filter conditions.
-            
-        Returns:
-            List of matching products with scores.
-        """
         # Generate query embedding
         query_vector = self.embedding_service.encode(query)
         
@@ -500,7 +433,6 @@ class ProductIngestionPipeline:
 
 
 def main():
-    """Run the ingestion pipeline."""
     import argparse
     
     parser = argparse.ArgumentParser(description="Ingest products into Qdrant")

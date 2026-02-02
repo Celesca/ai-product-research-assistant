@@ -1,9 +1,3 @@
-"""
-Product Catalog RAG Tool
-
-This tool retrieves information from the product catalog using
-vector similarity search (RAG - Retrieval Augmented Generation).
-"""
 from typing import Dict, Any, List, Optional
 from qdrant_client import QdrantClient
 from qdrant_client.http import models
@@ -17,12 +11,6 @@ from src.utils.embeddings import EmbeddingService
 
 
 class ProductCatalogRAGTool:
-    """
-    RAG-based tool for searching the product catalog.
-    
-    Uses Qdrant vector database for semantic search over product descriptions,
-    with metadata filtering support for category, brand, price range, etc.
-    """
     
     name: str = "product_catalog_search"
     description: str = """
@@ -44,14 +32,6 @@ class ProductCatalogRAGTool:
         qdrant_port: int = None,
         collection_name: str = None
     ):
-        """
-        Initialize the Product Catalog RAG tool.
-        
-        Args:
-            qdrant_host: Qdrant server host
-            qdrant_port: Qdrant server port
-            collection_name: Name of the Qdrant collection
-        """
         self.qdrant_host = qdrant_host or settings.QDRANT_HOST
         self.qdrant_port = qdrant_port or settings.QDRANT_PORT
         self.collection_name = collection_name or settings.COLLECTION_NAME
@@ -68,20 +48,7 @@ class ProductCatalogRAGTool:
         min_rating: Optional[float] = None,
         in_stock: Optional[bool] = None
     ) -> Optional[models.Filter]:
-        """
-        Build Qdrant filter conditions from parameters.
-        
-        Args:
-            category: Filter by product category
-            brand: Filter by brand name
-            min_price: Minimum price
-            max_price: Maximum price
-            min_rating: Minimum average rating
-            in_stock: If True, only return products with stock > 0
-            
-        Returns:
-            Qdrant Filter object or None if no filters specified
-        """
+
         must_conditions = []
         
         if category:
@@ -147,22 +114,6 @@ class ProductCatalogRAGTool:
         min_rating: Optional[float] = None,
         in_stock: Optional[bool] = None
     ) -> Dict[str, Any]:
-        """
-        Search for products in the catalog.
-        
-        Args:
-            query: Natural language search query
-            limit: Maximum number of results to return (default: 5)
-            category: Filter by category
-            brand: Filter by brand
-            min_price: Minimum price filter
-            max_price: Maximum price filter
-            min_rating: Minimum rating filter
-            in_stock: If True, only return products in stock
-            
-        Returns:
-            Dictionary with search results and metadata
-        """
         try:
             # Generate query embedding
             query_vector = self.embedding_service.encode(query)
@@ -226,15 +177,6 @@ class ProductCatalogRAGTool:
             }
     
     def get_product_by_id(self, product_id: str) -> Dict[str, Any]:
-        """
-        Get a specific product by its ID.
-        
-        Args:
-            product_id: The product ID (e.g., "PROD-001")
-            
-        Returns:
-            Dictionary with product details or error
-        """
         try:
             results = self.client.scroll(
                 collection_name=self.collection_name,
@@ -274,16 +216,6 @@ class ProductCatalogRAGTool:
             }
     
     def get_products_by_category(self, category: str, limit: int = 20) -> Dict[str, Any]:
-        """
-        Get all products in a specific category.
-        
-        Args:
-            category: The category name
-            limit: Maximum number of products to return
-            
-        Returns:
-            Dictionary with products in the category
-        """
         try:
             results = self.client.scroll(
                 collection_name=self.collection_name,
@@ -323,16 +255,6 @@ class ProductCatalogRAGTool:
             }
     
     def get_products_by_brand(self, brand: str, limit: int = 20) -> Dict[str, Any]:
-        """
-        Get all products from a specific brand.
-        
-        Args:
-            brand: The brand name
-            limit: Maximum number of products to return
-            
-        Returns:
-            Dictionary with products from the brand
-        """
         try:
             results = self.client.scroll(
                 collection_name=self.collection_name,

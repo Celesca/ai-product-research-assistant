@@ -3,6 +3,7 @@ from typing_extensions import TypedDict
 import operator
 import json
 import asyncio
+import logging
 
 from langchain_core.messages import BaseMessage, HumanMessage, AIMessage, ToolMessage, SystemMessage
 from langchain_core.tools import tool, BaseTool
@@ -17,9 +18,17 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.dirname(__file__))))
 
 from src.utils.config import settings
 from src.models.schemas import ProductSearchInput, WebSearchInput, PriceAnalysisInput
-from src.tools.product_catalog_rag import ProductCatalogRAGTool
-from src.tools.web_search import WebSearchTool
-from src.tools.price_analysis import PriceAnalysisTool
+from src.agent.tools.product_catalog_rag import ProductCatalogRAGTool
+from src.agent.tools.web_search import WebSearchTool
+from src.agent.tools.price_analysis import PriceAnalysisTool
+
+# Configure logging for agent thinking visibility
+logger = logging.getLogger(__name__)
+logging.basicConfig(
+    level=logging.INFO,
+    format='%(asctime)s | %(levelname)s | %(name)s | %(message)s',
+    datefmt='%H:%M:%S'
+)
 
 
 # Define the agent state
@@ -86,6 +95,9 @@ class ResearchAgent:
             Use this for finding products by description, features, category, brand, or specifications.
             Returns product details including price, stock, ratings, and margin information.
             """
+            logger.info(f"🔍 [TOOL] product_catalog_search executing...")
+            logger.info(f"   └─ Query: '{query}' | Filters: category={category}, brand={brand}")
+            
             result = self.product_catalog_tool.search(
                 query=query,
                 category=category,
@@ -96,6 +108,13 @@ class ResearchAgent:
                 in_stock=in_stock,
                 limit=limit
             )
+            
+            # Log result summary
+            if result.get("status") == "success":
+                logger.info(f"   ✓ Found {result.get('total_results', 0)} products")
+            else:
+                logger.warning(f"   ⚠ Tool returned: {result.get('status')}")
+            
             return json.dumps(result, indent=2)
         
         # Web search tool
@@ -106,7 +125,17 @@ class ResearchAgent:
             Use this for current market prices, competitor products, reviews, or trends
             that are not in the internal product catalog.
             """
+            logger.info(f"🌐 [TOOL] web_search executing...")
+            logger.info(f"   └─ Query: '{query}' | Limit: {limit}")
+            
             result = self.web_search_tool.search_sync(query=query, limit=limit)
+            
+            # Log result summary
+            if result.get("status") == "success":
+                logger.info(f"   ✓ Found {len(result.get('results', []))} web results")
+            else:
+                logger.warning(f"   ⚠ Tool returned: {result.get('status')}")
+            
             return json.dumps(result, indent=2)
         
         # Price analysis tool
@@ -118,14 +147,9 @@ class ResearchAgent:
             threshold: float = 40.0,
             limit: int = 10
         ) -> str:
-            """
-            Analyze product pricing and profit margins using deterministic calculations.
-            Use this for:
-            - Finding products with lowest/highest margins
-            - Analyzing margins by category or brand
-            - Finding products below a margin threshold
-            All calculations use the formula: margin = ((price - cost) / price) × 100
-            """
+            logger.info(f"📊 [TOOL] price_analysis executing...")
+            logger.info(f"   └─ Type: {analysis_type} | Category: {category} | Brand: {brand}")
+            
             result = self.price_analysis_tool.analyze(
                 analysis_type=analysis_type,
                 category=category,
@@ -133,6 +157,13 @@ class ResearchAgent:
                 threshold=threshold,
                 limit=limit
             )
+            
+            # Log result summary
+            if result.get("status") == "success":
+                logger.info(f"   ✓ Analyzed {result.get('total_products_analyzed', 0)} products")
+            else:
+                logger.warning(f"   ⚠ Tool returned: {result.get('status')}")
+            
             return json.dumps(result, indent=2)
         
         return [product_catalog_search, web_search, price_analysis]
@@ -147,6 +178,13 @@ class ResearchAgent:
         def agent(state: AgentState) -> Dict[str, Any]:
             """Process the current state and decide next action."""
             messages = state["messages"]
+            
+            # Log incoming query
+            if len(messages) == 1:
+                logger.info("=" * 60)
+                logger.info("🧠 AGENT THINKING STARTED")
+                logger.info(f"📝 User Query: {messages[0].content}")
+                logger.info("=" * 60)
             
             # If this is the first message, add system context
             if len(messages) == 1:
@@ -171,9 +209,22 @@ class ResearchAgent:
 
 **For price analysis:** NEVER calculate margins yourself - use the price_analysis tool.""")
                 messages = [system_message] + list(messages)
+                logger.info("📋 System prompt injected")
             
             # Call LLM with tools
+            logger.info("🤖 Calling LLM...")
             response = self.llm_with_tools.invoke(messages)
+            
+            # Log LLM response
+            if hasattr(response, "tool_calls") and response.tool_calls:
+                logger.info(f"🔧 LLM decided to use {len(response.tool_calls)} tool(s):")
+                for tc in response.tool_calls:
+                    logger.info(f"   └─ Tool: {tc['name']}")
+                    logger.info(f"      Args: {json.dumps(tc['args'], indent=2)}")
+            else:
+                # Final answer
+                answer_preview = response.content[:200] + "..." if len(response.content) > 200 else response.content
+                logger.info(f"💬 LLM Final Answer: {answer_preview}")
             
             return {"messages": [response]}
         
@@ -185,9 +236,12 @@ class ResearchAgent:
             
             # If the LLM made tool calls, continue to tool node
             if hasattr(last_message, "tool_calls") and last_message.tool_calls:
+                logger.info("➡️  Decision: Continue to TOOLS")
                 return "tools"
             
             # Otherwise, end
+            logger.info("✅ Decision: END (final answer ready)")
+            logger.info("=" * 60)
             return END
         
         # Build the graph
