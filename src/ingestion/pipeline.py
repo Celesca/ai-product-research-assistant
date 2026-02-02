@@ -417,6 +417,12 @@ class ProductIngestionPipeline:
             points=points
         )
         
+        # Update stored chunk counts for processed products
+        for row, chunk_info in chunk_to_product:
+            product_id = str(row["product_id"])
+            self._stored_chunk_counts[product_id] = chunk_info["total_chunks"]
+            self._stored_timestamps[product_id] = str(row["last_updated"])
+        
         # Verify ingestion
         collection_info = self.client.get_collection(self.collection_name)
         vectors_count = collection_info.points_count
@@ -470,10 +476,21 @@ class ProductIngestionPipeline:
                         total_chunks = point.payload.get("total_chunks", 1)
                         
                         if product_id and last_updated:
-                            # Only store the first occurrence (in case of multi-chunk products)
                             if product_id not in self._stored_timestamps:
+                                # First occurrence: store the values
                                 self._stored_timestamps[product_id] = last_updated
                                 self._stored_chunk_counts[product_id] = total_chunks
+                            else:
+                                # Validate consistency for multi-chunk products
+                                # Use the maximum chunk count if there's inconsistency
+                                if total_chunks != self._stored_chunk_counts[product_id]:
+                                    print(f"Warning: Inconsistent chunk count for product {product_id}. "
+                                          f"Found {total_chunks} and {self._stored_chunk_counts[product_id]}. "
+                                          f"Using maximum value.")
+                                    self._stored_chunk_counts[product_id] = max(
+                                        total_chunks, 
+                                        self._stored_chunk_counts[product_id]
+                                    )
                 
                 if offset is None:
                     break
