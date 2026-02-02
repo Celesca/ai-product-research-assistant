@@ -34,13 +34,13 @@ export interface ConversationDetail extends Omit<Conversation, 'message_count'> 
 
 export interface QueryResponse {
   status: string;
-  response: string;
-  products: any[];
-  sources: any[];
+  query: string;
+  answer: string;
   tools_used: string[];
   reasoning: string;
   confidence: number;
   execution_time_ms: number;
+  query_id?: number;
 }
 
 // API Functions
