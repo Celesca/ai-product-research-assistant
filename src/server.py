@@ -4,7 +4,7 @@
 - POST /feedback - Submit user feedback
 - GET /health - Health check
 """
-from fastapi import FastAPI, HTTPException, Depends, BackgroundTasks
+from fastapi import FastAPI, HTTPException, Depends, BackgroundTasks, Body
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel, Field
 from typing import Optional, List, Dict, Any
@@ -316,7 +316,7 @@ async def list_tools():
 # === Conversation Endpoints (Multi-Turn Support) ===
 
 @app.post("/conversations", response_model=ConversationResponse, tags=["Conversations"])
-async def create_conversation(request: ConversationCreate = None):
+async def create_conversation(request: ConversationCreate = Body(default=ConversationCreate())):
     """Create a new conversation session for multi-turn interactions."""
     try:
         title = request.title if request else None

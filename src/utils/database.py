@@ -1,6 +1,7 @@
 from typing import List, Optional
-from sqlalchemy import create_engine
-from sqlalchemy.orm import sessionmaker
+from datetime import datetime
+from sqlalchemy import create_engine, func
+from sqlalchemy.orm import sessionmaker, selectinload
 from sqlalchemy.ext.asyncio import create_async_engine, AsyncSession
 from sqlalchemy.orm import sessionmaker as async_sessionmaker
 from sqlalchemy import select
@@ -180,17 +181,19 @@ class DatabaseManager:
     
     async def get_conversations(self, limit: int = 50, offset: int = 0) -> List[Conversation]:
         """
-        Get list of conversations.
+        Get list of conversations with message counts eagerly loaded.
         
         Args:
             limit: Maximum number of conversations to return
             offset: Number of conversations to skip
             
         Returns:
-            List of Conversation objects
+            List of Conversation objects with messages eagerly loaded
         """
         async with self.AsyncSession() as session:
-            stmt = select(Conversation).order_by(
+            stmt = select(Conversation).options(
+                selectinload(Conversation.messages)
+            ).order_by(
                 Conversation.updated_at.desc()
             ).limit(limit).offset(offset)
             result = await session.execute(stmt)
@@ -279,7 +282,6 @@ class DatabaseManager:
             session.add(message)
             
             # Update conversation's updated_at timestamp
-            from datetime import datetime
             conversation.updated_at = datetime.utcnow()
             
             # Auto-generate title from first user message if not set

@@ -48,7 +48,8 @@ class Settings(BaseSettings):
 
 # Legacy Config class for backward compatibility
 class Config:
-
+    # Kept for backward compatibility with legacy code importing Config directly.
+    
     # Qdrant Configuration
     QDRANT_HOST: str = os.getenv("QDRANT_HOST", "localhost")
     QDRANT_PORT: int = int(os.getenv("QDRANT_PORT", "6333"))
