@@ -1,6 +1,7 @@
 import hashlib
 import pandas as pd
 from typing import List, Dict, Any, Optional
+from datetime import datetime
 from qdrant_client import QdrantClient
 from qdrant_client.http import models
 from qdrant_client.http.models import Distance, VectorParams, PointStruct
@@ -14,22 +15,105 @@ from src.utils.config import config
 from src.utils.embeddings import EmbeddingService
 
 
+class TextChunker:
+    """
+    Text chunker for splitting long product descriptions.
+    
+    Pipeline Stage: CSV → Processing → **Chunking** → Embeddings → Vector DB
+    
+    For product descriptions that exceed the embedding model's optimal context,
+    splits text into overlapping chunks to maintain semantic coherence.
+    """
+    
+    def __init__(self, chunk_size: int = 512, overlap: int = 50):
+        """
+        Initialize the text chunker.
+        
+        Args:
+            chunk_size: Maximum characters per chunk.
+            overlap: Characters to overlap between chunks.
+        """
+        self.chunk_size = chunk_size
+        self.overlap = overlap
+    
+    def chunk(self, text: str) -> List[str]:
+        """
+        Split text into overlapping chunks.
+        
+        Args:
+            text: The text to chunk.
+            
+        Returns:
+            List of text chunks.
+        """
+        if len(text) <= self.chunk_size:
+            return [text]
+        
+        chunks = []
+        start = 0
+        while start < len(text):
+            end = start + self.chunk_size
+            chunk = text[start:end]
+            chunks.append(chunk)
+            start = end - self.overlap
+        
+        return chunks
+    
+    def chunk_product(self, product_text: str, product_id: str) -> List[Dict[str, Any]]:
+        """
+        Chunk a product's text and return with metadata.
+        
+        Args:
+            product_text: Combined product text for embedding.
+            product_id: The product's unique identifier.
+            
+        Returns:
+            List of dicts with chunk text and chunk metadata.
+        """
+        chunks = self.chunk(product_text)
+        return [
+            {
+                "text": chunk,
+                "chunk_index": i,
+                "total_chunks": len(chunks),
+                "product_id": product_id
+            }
+            for i, chunk in enumerate(chunks)
+        ]
+
+
 class ProductIngestionPipeline:
     """
     Pipeline for ingesting product catalog data into Qdrant.
     
+    Pipeline Architecture:
+    ┌──────────────┐    ┌──────────────┐    ┌──────────────┐    ┌──────────────┐
+    │  CSV File    │───▶│  Processing  │───▶│   Chunking   │───▶│  Embeddings  │
+    └──────────────┘    └──────────────┘    └──────────────┘    └──────────────┘
+                                                                       │
+                                                                       ▼
+                                                              ┌──────────────┐
+                                                              │   Qdrant     │
+                                                              │  Vector DB   │
+                                                              └──────────────┘
+    
     Features:
     - Loads products from CSV
-    - Generates text embeddings from product descriptions
+    - Chunks long product descriptions for better embedding quality
+    - Generates text embeddings using Sentence Transformers
     - Stores vectors with full metadata for filtering
-    - Supports incremental updates (upsert by product_id)
+    - Supports incremental updates (upsert by product_id, skips unchanged)
+    
+    See INGESTION.md for full documentation.
     """
     
     def __init__(
         self, 
         qdrant_host: str = None,
         qdrant_port: int = None,
-        collection_name: str = None
+        collection_name: str = None,
+        chunk_size: int = 512,
+        chunk_overlap: int = 50
     ):
         """
         Initialize the ingestion pipeline.
@@ -38,6 +122,8 @@ class ProductIngestionPipeline:
             qdrant_host: Qdrant server host (default: from config)
             qdrant_port: Qdrant server port (default: from config)
             collection_name: Name of the collection to use (default: from config)
+            chunk_size: Maximum characters per text chunk (default: 512)
+            chunk_overlap: Characters to overlap between chunks (default: 50)
         """
         self.qdrant_host = qdrant_host or config.QDRANT_HOST
         self.qdrant_port = qdrant_port or config.QDRANT_PORT
@@ -45,6 +131,10 @@ class ProductIngestionPipeline:
         
         self.client = QdrantClient(host=self.qdrant_host, port=self.qdrant_port)
         self.embedding_service = EmbeddingService()
+        self.chunker = TextChunker(chunk_size=chunk_size, overlap=chunk_overlap)
+        
+        # Store last update timestamps for incremental updates
+        self._stored_timestamps: Dict[str, str] = {}
     
     def _product_id_to_point_id(self, product_id: str) -> int:
         """
@@ -173,18 +263,22 @@ class ProductIngestionPipeline:
         self, 
         csv_path: str = None, 
         recreate_collection: bool = False,
-        batch_size: int = 32
+        batch_size: int = 32,
+        skip_unchanged: bool = True
     ) -> Dict[str, Any]:
         """
-        Run the full ingestion pipeline.
+        Run the full ingestion pipeline with incremental update support.
+        
+        Pipeline: CSV → Processing → Chunking → Embeddings → Vector DB
         
         Args:
             csv_path: Path to the products CSV file.
             recreate_collection: If True, recreate the collection from scratch.
             batch_size: Number of products to process at once.
+            skip_unchanged: If True, skip products that haven't changed (based on last_updated).
             
         Returns:
-            Dictionary with ingestion statistics.
+            Dictionary with ingestion statistics including new/updated/skipped counts.
         """
         # Load products
         df = self.load_products(csv_path)
@@ -192,22 +286,89 @@ class ProductIngestionPipeline:
         # Create collection
         self.create_collection(recreate=recreate_collection)
         
-        # Prepare texts for embedding
-        print("Preparing texts for embedding...")
-        texts = [self._prepare_text_for_embedding(row) for _, row in df.iterrows()]
+        # Load existing timestamps for incremental update detection
+        if skip_unchanged and not recreate_collection:
+            self._load_stored_timestamps()
+        
+        # Track statistics
+        stats = {
+            "new_products": 0,
+            "updated_products": 0,
+            "skipped_products": 0,
+            "total_chunks": 0
+        }
+        
+        # Filter products that need processing
+        products_to_process = []
+        for _, row in df.iterrows():
+            product_id = str(row["product_id"])
+            last_updated = str(row["last_updated"])
+            
+            # Check if product was updated
+            if skip_unchanged and product_id in self._stored_timestamps:
+                if self._stored_timestamps[product_id] == last_updated:
+                    stats["skipped_products"] += 1
+                    continue
+                else:
+                    stats["updated_products"] += 1
+            else:
+                stats["new_products"] += 1
+            
+            products_to_process.append(row)
+        
+        if not products_to_process:
+            print("No products to update.")
+            collection_info = self.client.get_collection(self.collection_name)
+            return {
+                "status": "success",
+                "collection_name": self.collection_name,
+                "products_loaded": len(df),
+                "vectors_count": collection_info.points_count,
+                **stats
+            }
+        
+        # Prepare texts for embedding with chunking
+        print(f"Processing {len(products_to_process)} products ({stats['skipped_products']} skipped as unchanged)...")
+        all_chunks = []
+        chunk_to_product = []  # Maps chunk index to product row
+        
+        for row in products_to_process:
+            product_text = self._prepare_text_for_embedding(row)
+            chunks = self.chunker.chunk_product(product_text, str(row["product_id"]))
+            
+            for chunk_info in chunks:
+                all_chunks.append(chunk_info["text"])
+                chunk_to_product.append((row, chunk_info))
+        
+        stats["total_chunks"] = len(all_chunks)
+        print(f"Created {len(all_chunks)} chunks from {len(products_to_process)} products.")
         
         # Generate embeddings
         print("Generating embeddings...")
-        embeddings = self.embedding_service.encode_batch(texts, batch_size=batch_size)
+        embeddings = self.embedding_service.encode_batch(all_chunks, batch_size=batch_size)
         
         # Prepare points for upsert
         print("Preparing points for Qdrant...")
         points = []
-        for idx, (_, row) in enumerate(df.iterrows()):
+        for idx, (row, chunk_info) in enumerate(chunk_to_product):
+            # For products with single chunk, use product_id as point_id
+            # For multi-chunk products, include chunk index
+            if chunk_info["total_chunks"] == 1:
+                point_id = self._product_id_to_point_id(str(row["product_id"]))
+            else:
+                # Create unique ID for each chunk
+                chunk_id = f"{row['product_id']}_chunk_{chunk_info['chunk_index']}"
+                point_id = self._product_id_to_point_id(chunk_id)
+            
+            # Prepare payload with chunk metadata
+            payload = self._prepare_payload(row)
+            payload["chunk_index"] = chunk_info["chunk_index"]
+            payload["total_chunks"] = chunk_info["total_chunks"]
+            
             point = PointStruct(
-                id=self._product_id_to_point_id(row["product_id"]),
+                id=point_id,
                 vector=embeddings[idx],
-                payload=self._prepare_payload(row)
+                payload=payload
             )
             points.append(point)
         
@@ -225,13 +386,54 @@ class ProductIngestionPipeline:
         print(f"\n✅ Ingestion complete!")
         print(f"   Collection: {self.collection_name}")
         print(f"   Vectors count: {vectors_count}")
+        print(f"   New products: {stats['new_products']}")
+        print(f"   Updated products: {stats['updated_products']}")
+        print(f"   Skipped (unchanged): {stats['skipped_products']}")
+        print(f"   Total chunks created: {stats['total_chunks']}")
         
         return {
             "status": "success",
             "collection_name": self.collection_name,
             "products_loaded": len(df),
-            "vectors_count": vectors_count
+            "vectors_count": vectors_count,
+            **stats
         }
+    
+    def _load_stored_timestamps(self) -> None:
+        """
+        Load existing product timestamps from Qdrant for incremental update detection.
+        """
+        try:
+            # Scroll through all points to get their last_updated timestamps
+            offset = None
+            self._stored_timestamps = {}
+            
+            while True:
+                result = self.client.scroll(
+                    collection_name=self.collection_name,
+                    limit=100,
+                    offset=offset,
+                    with_payload=["product_id", "last_updated"]
+                )
+                points, offset = result
+                
+                if not points:
+                    break
+                
+                for point in points:
+                    if point.payload:
+                        product_id = point.payload.get("product_id")
+                        last_updated = point.payload.get("last_updated")
+                        if product_id and last_updated:
+                            self._stored_timestamps[product_id] = last_updated
+                
+                if offset is None:
+                    break
+            
+            print(f"Loaded {len(self._stored_timestamps)} existing product timestamps.")
+        except Exception as e:
+            print(f"Warning: Could not load existing timestamps: {e}")
+            self._stored_timestamps = {}
     
     def search(
         self, 
