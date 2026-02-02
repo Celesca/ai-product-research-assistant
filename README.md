@@ -1,6 +1,10 @@
-# AI Product Research Assistant
+<div align="center">
 
-<img width="959" height="599" alt="image" src="https://github.com/user-attachments/assets/a4e6a1f2-bcef-4560-89db-64b78b8c3706" />
+   # AI Product Research Assistant
+
+### Take-home Assignment : AI Engineer @ QuanXAI
+  <img width="232" height="79" alt="image" src="https://github.com/user-attachments/assets/2156f8c7-15f3-47c5-b3a6-30696b44f6a6" />
+</div>
 
 An AI-powered product research assistant built with FastAPI, LangGraph, Qdrant, and Ollama. The system helps e-commerce teams make data-driven decisions about products through intelligent query routing and multi-tool orchestration.
 
@@ -12,6 +16,8 @@ An AI-powered product research assistant built with FastAPI, LangGraph, Qdrant, 
 - **Intelligent Routing**: LangGraph-based agent automatically selects appropriate tools
 - **Chat Interface**: Modern React-based frontend for interactive research
 - **Query History**: Track all queries with feedback support
+
+<img width="959" height="599" alt="image" src="https://github.com/user-attachments/assets/a4e6a1f2-bcef-4560-89db-64b78b8c3706" />
 
 ## 📋 Prerequisites
 
