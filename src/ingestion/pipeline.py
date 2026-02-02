@@ -280,9 +280,9 @@ class ProductIngestionPipeline:
                 query_filter = models.Filter(must=must_conditions)
         
         # Search
-        results = self.client.search(
+        results = self.client.query_points(
             collection_name=self.collection_name,
-            query_vector=query_vector,
+            query=query_vector,
             limit=limit,
             query_filter=query_filter
         )
@@ -293,7 +293,7 @@ class ProductIngestionPipeline:
                 "score": hit.score,
                 **hit.payload
             }
-            for hit in results
+            for hit in results.points
         ]
 
 
