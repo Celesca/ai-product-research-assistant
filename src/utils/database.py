@@ -1,7 +1,3 @@
-"""
-Manager class for database operations.
-Handles connection pooling and session management.
-"""
 from typing import List, Optional
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
@@ -14,18 +10,9 @@ from src.models.sql_models import Base, QueryHistory, Feedback
 
 
 class DatabaseManager:
-    """
-    Manager class for database operations.
-    Handles connection pooling and session management.
-    """
     
     def __init__(self, database_url: str = None):
-        """
-        Initialize the database manager.
-        
-        Args:
-            database_url: SQLAlchemy database URL. Defaults to settings.DATABASE_URL
-        """
+
         self.database_url = database_url or settings.DATABASE_URL
         
         # Convert sqlite:// to sqlite+aiosqlite:// for async support
@@ -56,15 +43,12 @@ class DatabaseManager:
         )
     
     def create_tables(self):
-        """Create all database tables."""
         Base.metadata.create_all(self.sync_engine)
     
     def get_sync_session(self):
-        """Get a synchronous database session."""
         return self.SyncSession()
     
     async def get_async_session(self) -> AsyncSession:
-        """Get an async database session."""
         async with self.AsyncSession() as session:
             yield session
     
