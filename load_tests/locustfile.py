@@ -2,7 +2,7 @@
 Load Testing for AI Product Research Assistant using Locust.
 
 Run with:
-    locust -f load_tests/locustfile.py --host=http://localhost:8000
+    locust -f locustfile.py --host=http://localhost:8000
 
 Then open http://localhost:8089 to configure and start the test.
 """

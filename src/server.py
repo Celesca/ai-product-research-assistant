@@ -4,7 +4,7 @@
 - POST /feedback - Submit user feedback
 - GET /health - Health check
 """
-from fastapi import FastAPI, HTTPException, Depends, BackgroundTasks
+from fastapi import FastAPI, HTTPException, Depends, BackgroundTasks, Body
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel, Field
 from typing import Optional, List, Dict, Any
@@ -27,7 +27,12 @@ from src.models.schemas import (
     FeedbackResponse, 
     QueryHistoryItem, 
     QueryHistoryResponse, 
-    HealthResponse
+    HealthResponse,
+    ConversationCreate,
+    ConversationResponse,
+    ConversationDetailResponse,
+    ConversationsListResponse,
+    MessageResponse
 )
 
 logging.basicConfig(level=logging.INFO)
@@ -93,10 +98,23 @@ async def query_endpoint(
     logger.info(f"Received query: {request.query[:100]}...")
     
     try:
-        # Process query with agent
-        result = await agent.aquery(request.query)
+        conversation_history = None
+        conversation_id = request.conversation_id
         
-        # Save to database
+        # If conversation_id provided, load conversation history
+        if conversation_id:
+            messages = await db_manager.get_conversation_messages(conversation_id)
+            if messages:
+                conversation_history = [
+                    {"role": msg.role, "content": msg.content}
+                    for msg in messages
+                ]
+                logger.info(f"Loaded {len(messages)} messages from conversation {conversation_id}")
+        
+        # Process query with agent (with conversation history if available)
+        result = await agent.aquery(request.query, conversation_history=conversation_history)
+        
+        # Save to query history (legacy)
         query_record = await db_manager.save_query(
             query=request.query,
             response=result.get("answer"),
@@ -105,6 +123,24 @@ async def query_endpoint(
             confidence=result.get("confidence"),
             execution_time_ms=result.get("execution_time_ms")
         )
+        
+        # If conversation_id provided, also save messages to conversation
+        if conversation_id:
+            # Save user message
+            await db_manager.add_message(
+                conversation_id=conversation_id,
+                role="user",
+                content=request.query
+            )
+            # Save assistant message
+            await db_manager.add_message(
+                conversation_id=conversation_id,
+                role="assistant",
+                content=result.get("answer", ""),
+                tools_used=result.get("tools_used", []),
+                confidence=result.get("confidence"),
+                execution_time_ms=result.get("execution_time_ms")
+            )
         
         return QueryResponse(
             status=result.get("status", "success"),
@@ -275,6 +311,103 @@ async def list_tools():
             }
         ]
     }
+
+
+# === Conversation Endpoints (Multi-Turn Support) ===
+
+@app.post("/conversations", response_model=ConversationResponse, tags=["Conversations"])
+async def create_conversation(request: ConversationCreate = Body(default=ConversationCreate())):
+    """Create a new conversation session for multi-turn interactions."""
+    try:
+        title = request.title if request else None
+        conversation = await db_manager.create_conversation(title=title)
+        
+        return ConversationResponse(
+            id=conversation.id,
+            title=conversation.title,
+            created_at=conversation.created_at.isoformat() if conversation.created_at else "",
+            updated_at=conversation.updated_at.isoformat() if conversation.updated_at else "",
+            message_count=0
+        )
+    except Exception as e:
+        logger.error(f"Error creating conversation: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.get("/conversations", response_model=ConversationsListResponse, tags=["Conversations"])
+async def list_conversations(limit: int = 50, offset: int = 0):
+    """List all conversations with pagination."""
+    try:
+        conversations = await db_manager.get_conversations(limit=limit, offset=offset)
+        
+        return ConversationsListResponse(
+            status="success",
+            total=len(conversations),
+            conversations=[
+                ConversationResponse(
+                    id=c.id,
+                    title=c.title,
+                    created_at=c.created_at.isoformat() if c.created_at else "",
+                    updated_at=c.updated_at.isoformat() if c.updated_at else "",
+                    message_count=len(c.messages) if hasattr(c, 'messages') and c.messages else 0
+                )
+                for c in conversations
+            ]
+        )
+    except Exception as e:
+        logger.error(f"Error listing conversations: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.get("/conversations/{conversation_id}", response_model=ConversationDetailResponse, tags=["Conversations"])
+async def get_conversation(conversation_id: int):
+    """Get a specific conversation with all its messages."""
+    try:
+        conversation = await db_manager.get_conversation_by_id(conversation_id)
+        
+        if not conversation:
+            raise HTTPException(status_code=404, detail=f"Conversation {conversation_id} not found")
+        
+        return ConversationDetailResponse(
+            id=conversation.id,
+            title=conversation.title,
+            created_at=conversation.created_at.isoformat() if conversation.created_at else "",
+            updated_at=conversation.updated_at.isoformat() if conversation.updated_at else "",
+            messages=[
+                MessageResponse(
+                    id=m.id,
+                    role=m.role,
+                    content=m.content,
+                    tools_used=m.tools_used,
+                    confidence=m.confidence,
+                    execution_time_ms=m.execution_time_ms,
+                    created_at=m.created_at.isoformat() if m.created_at else ""
+                )
+                for m in conversation.messages
+            ]
+        )
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error getting conversation: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.delete("/conversations/{conversation_id}", tags=["Conversations"])
+async def delete_conversation(conversation_id: int):
+    """Delete a conversation and all its messages."""
+    try:
+        deleted = await db_manager.delete_conversation(conversation_id)
+        
+        if not deleted:
+            raise HTTPException(status_code=404, detail=f"Conversation {conversation_id} not found")
+        
+        return {"status": "success", "message": f"Conversation {conversation_id} deleted"}
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error deleting conversation: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
 
 
 if __name__ == "__main__":

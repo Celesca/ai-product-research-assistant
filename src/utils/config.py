@@ -1,6 +1,3 @@
-"""
-Configuration settings for the AI Product Research Assistant.
-"""
 import os
 from dotenv import load_dotenv
 from pydantic_settings import BaseSettings
@@ -11,7 +8,6 @@ load_dotenv()
 
 
 class Settings(BaseSettings):
-    """Application configuration settings using Pydantic."""
     
     # Qdrant Configuration
     QDRANT_HOST: str = "localhost"
@@ -52,7 +48,7 @@ class Settings(BaseSettings):
 
 # Legacy Config class for backward compatibility
 class Config:
-    """Legacy configuration settings (for backward compatibility)."""
+    # Kept for backward compatibility with legacy code importing Config directly.
     
     # Qdrant Configuration
     QDRANT_HOST: str = os.getenv("QDRANT_HOST", "localhost")

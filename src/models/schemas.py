@@ -1,6 +1,4 @@
-"""
-Pydantic models / schemas for API requests, responses, and tool inputs.
-"""
+# Pydantic models / schemas for API requests, responses, and tool inputs.
 from pydantic import BaseModel, Field
 from typing import Optional, List, Dict, Any
 
@@ -9,11 +7,13 @@ from typing import Optional, List, Dict, Any
 class QueryRequest(BaseModel):
     """Request model for the query endpoint."""
     query: str = Field(..., description="The user's query", min_length=1, max_length=2000)
+    conversation_id: Optional[int] = Field(None, description="Optional conversation ID for multi-turn context")
     
     class Config:
         json_schema_extra = {
             "example": {
-                "query": "What wireless headphones do we have in stock?"
+                "query": "What wireless headphones do we have in stock?",
+                "conversation_id": 1
             }
         }
 
@@ -126,3 +126,147 @@ class PriceAnalysisInput(BaseModel):
     brand: Optional[str] = Field(default=None, description="Filter by brand")
     threshold: float = Field(default=40.0, description="Margin threshold for below_threshold analysis")
     limit: int = Field(default=10, description="Maximum number of products to return")
+
+
+# --- Structured Agent Response Models ---
+
+class ProductInfo(BaseModel):
+    """Structured product information for agent responses."""
+    product_id: str
+    product_name: str
+    brand: str
+    category: str
+    current_price: float
+    cost: Optional[float] = None
+    stock_quantity: Optional[int] = None
+    average_rating: Optional[float] = None
+    margin_percentage: Optional[float] = None
+    relevance_score: Optional[float] = None
+    
+    class Config:
+        json_schema_extra = {
+            "example": {
+                "product_id": "PROD-001",
+                "product_name": "Wireless Headphones Pro",
+                "brand": "AudioTech",
+                "category": "Electronics",
+                "current_price": 149.99,
+                "cost": 89.99,
+                "stock_quantity": 50,
+                "average_rating": 4.5,
+                "margin_percentage": 40.0,
+                "relevance_score": 0.95
+            }
+        }
+
+
+class SourceInfo(BaseModel):
+    """Structured source/reference information for agent responses."""
+    title: str
+    url: Optional[str] = None
+    content: Optional[str] = None
+    source_type: str = Field(default="web", description="Type: 'web', 'catalog', 'analysis'")
+    relevance_score: Optional[float] = None
+    
+    class Config:
+        json_schema_extra = {
+            "example": {
+                "title": "Market Analysis: Wireless Headphones 2024",
+                "url": "https://example.com/market-analysis",
+                "content": "The wireless headphones market is growing...",
+                "source_type": "web",
+                "relevance_score": 0.92
+            }
+        }
+
+
+class StructuredQueryResponse(BaseModel):
+    """Enhanced structured response model for agent queries."""
+    status: str = Field(description="Response status: 'success' or 'error'")
+    query: str = Field(description="The original user query")
+    answer: str = Field(description="Human-readable answer summary")
+    products: List[ProductInfo] = Field(default=[], description="List of relevant products")
+    sources: List[SourceInfo] = Field(default=[], description="List of sources/references")
+    confidence: float = Field(default=0.0, ge=0.0, le=1.0, description="Confidence score 0-1")
+    tools_used: List[str] = Field(default=[], description="List of tools used")
+    reasoning: str = Field(default="", description="Explanation of reasoning")
+    execution_time_ms: int = Field(default=0, description="Execution time in milliseconds")
+    query_id: Optional[int] = None
+    error: Optional[str] = None
+    
+    class Config:
+        json_schema_extra = {
+            "example": {
+                "status": "success",
+                "query": "What wireless headphones do we have in stock?",
+                "answer": "We have 3 wireless headphones in stock with prices ranging from $49.99 to $199.99.",
+                "products": [
+                    {
+                        "product_id": "PROD-001",
+                        "product_name": "Wireless Headphones Pro",
+                        "brand": "AudioTech",
+                        "category": "Electronics",
+                        "current_price": 149.99,
+                        "stock_quantity": 50,
+                        "average_rating": 4.5,
+                        "relevance_score": 0.95
+                    }
+                ],
+                "sources": [],
+                "confidence": 0.92,
+                "tools_used": ["product_catalog_search"],
+                "reasoning": "Used product catalog search to find wireless headphones in stock",
+                "execution_time_ms": 1234,
+                "query_id": 1
+            }
+        }
+
+
+# --- Conversation Models (Multi-Turn Support) ---
+
+class ConversationCreate(BaseModel):
+    """Request model for creating a new conversation."""
+    title: Optional[str] = Field(None, max_length=255, description="Optional title for the conversation")
+    
+    class Config:
+        json_schema_extra = {
+            "example": {
+                "title": "Product Research Session"
+            }
+        }
+
+
+class MessageResponse(BaseModel):
+    """Response model for a single message in a conversation."""
+    id: int
+    role: str = Field(description="Message role: 'user' or 'assistant'")
+    content: str
+    tools_used: Optional[List[str]] = None
+    confidence: Optional[float] = None
+    execution_time_ms: Optional[int] = None
+    created_at: str
+
+
+class ConversationResponse(BaseModel):
+    """Response model for a conversation summary."""
+    id: int
+    title: Optional[str]
+    created_at: str
+    updated_at: str
+    message_count: int
+
+
+class ConversationDetailResponse(BaseModel):
+    """Response model for a conversation with all messages."""
+    id: int
+    title: Optional[str]
+    created_at: str
+    updated_at: str
+    messages: List[MessageResponse]
+
+
+class ConversationsListResponse(BaseModel):
+    """Response model for listing conversations."""
+    status: str
+    total: int
+    conversations: List[ConversationResponse]

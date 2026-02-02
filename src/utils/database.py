@@ -1,31 +1,19 @@
-"""
-Manager class for database operations.
-Handles connection pooling and session management.
-"""
 from typing import List, Optional
-from sqlalchemy import create_engine
-from sqlalchemy.orm import sessionmaker
+from datetime import datetime
+from sqlalchemy import create_engine, func
+from sqlalchemy.orm import sessionmaker, selectinload
 from sqlalchemy.ext.asyncio import create_async_engine, AsyncSession
 from sqlalchemy.orm import sessionmaker as async_sessionmaker
 from sqlalchemy import select
 
 from .config import settings
-from src.models.sql_models import Base, QueryHistory, Feedback
+from src.models.sql_models import Base, QueryHistory, Feedback, Conversation, Message
 
 
 class DatabaseManager:
-    """
-    Manager class for database operations.
-    Handles connection pooling and session management.
-    """
     
     def __init__(self, database_url: str = None):
-        """
-        Initialize the database manager.
-        
-        Args:
-            database_url: SQLAlchemy database URL. Defaults to settings.DATABASE_URL
-        """
+
         self.database_url = database_url or settings.DATABASE_URL
         
         # Convert sqlite:// to sqlite+aiosqlite:// for async support
@@ -56,15 +44,12 @@ class DatabaseManager:
         )
     
     def create_tables(self):
-        """Create all database tables."""
         Base.metadata.create_all(self.sync_engine)
     
     def get_sync_session(self):
-        """Get a synchronous database session."""
         return self.SyncSession()
     
     async def get_async_session(self) -> AsyncSession:
-        """Get an async database session."""
         async with self.AsyncSession() as session:
             yield session
     
@@ -174,6 +159,155 @@ class DatabaseManager:
             await session.commit()
             await session.refresh(feedback)
             return feedback
+    
+    # === Conversation Management (Multi-Turn Support) ===
+    
+    async def create_conversation(self, title: str = None) -> Conversation:
+        """
+        Create a new conversation session.
+        
+        Args:
+            title: Optional title for the conversation
+            
+        Returns:
+            The created Conversation object
+        """
+        async with self.AsyncSession() as session:
+            conversation = Conversation(title=title)
+            session.add(conversation)
+            await session.commit()
+            await session.refresh(conversation)
+            return conversation
+    
+    async def get_conversations(self, limit: int = 50, offset: int = 0) -> List[Conversation]:
+        """
+        Get list of conversations with message counts eagerly loaded.
+        
+        Args:
+            limit: Maximum number of conversations to return
+            offset: Number of conversations to skip
+            
+        Returns:
+            List of Conversation objects with messages eagerly loaded
+        """
+        async with self.AsyncSession() as session:
+            stmt = select(Conversation).options(
+                selectinload(Conversation.messages)
+            ).order_by(
+                Conversation.updated_at.desc()
+            ).limit(limit).offset(offset)
+            result = await session.execute(stmt)
+            return result.scalars().all()
+    
+    async def get_conversation_by_id(self, conversation_id: int) -> Optional[Conversation]:
+        """Get a specific conversation by ID with its messages."""
+        async with self.AsyncSession() as session:
+            stmt = select(Conversation).where(Conversation.id == conversation_id)
+            result = await session.execute(stmt)
+            conversation = result.scalar_one_or_none()
+            
+            if conversation:
+                # Eagerly load messages
+                messages_stmt = select(Message).where(
+                    Message.conversation_id == conversation_id
+                ).order_by(Message.created_at)
+                messages_result = await session.execute(messages_stmt)
+                conversation.messages = messages_result.scalars().all()
+            
+            return conversation
+    
+    async def delete_conversation(self, conversation_id: int) -> bool:
+        """
+        Delete a conversation and all its messages.
+        
+        Args:
+            conversation_id: ID of the conversation to delete
+            
+        Returns:
+            True if deleted, False if not found
+        """
+        async with self.AsyncSession() as session:
+            stmt = select(Conversation).where(Conversation.id == conversation_id)
+            result = await session.execute(stmt)
+            conversation = result.scalar_one_or_none()
+            
+            if not conversation:
+                return False
+            
+            await session.delete(conversation)
+            await session.commit()
+            return True
+    
+    async def add_message(
+        self,
+        conversation_id: int,
+        role: str,
+        content: str,
+        tools_used: List[str] = None,
+        confidence: float = None,
+        execution_time_ms: int = None
+    ) -> Optional[Message]:
+        """
+        Add a message to a conversation.
+        
+        Args:
+            conversation_id: ID of the conversation
+            role: 'user' or 'assistant'
+            content: Message content
+            tools_used: List of tools used (for assistant messages)
+            confidence: Confidence score (for assistant messages)
+            execution_time_ms: Execution time (for assistant messages)
+            
+        Returns:
+            The created Message object, or None if conversation not found
+        """
+        async with self.AsyncSession() as session:
+            # Check if conversation exists
+            conv_stmt = select(Conversation).where(Conversation.id == conversation_id)
+            conv_result = await session.execute(conv_stmt)
+            conversation = conv_result.scalar_one_or_none()
+            
+            if not conversation:
+                return None
+            
+            # Create message
+            message = Message(
+                conversation_id=conversation_id,
+                role=role,
+                content=content,
+                tools_used=tools_used,
+                confidence=confidence,
+                execution_time_ms=execution_time_ms
+            )
+            session.add(message)
+            
+            # Update conversation's updated_at timestamp
+            conversation.updated_at = datetime.utcnow()
+            
+            # Auto-generate title from first user message if not set
+            if conversation.title is None and role == "user":
+                conversation.title = content[:100] + ("..." if len(content) > 100 else "")
+            
+            await session.commit()
+            await session.refresh(message)
+            return message
+    
+    async def get_conversation_messages(self, conversation_id: int) -> List[Message]:
+        """
+        Get all messages in a conversation.
+        
+        Args:
+            conversation_id: ID of the conversation
+            
+        Returns:
+            List of Message objects ordered by creation time
+        """
+        async with self.AsyncSession() as session:
+            stmt = select(Message).where(
+                Message.conversation_id == conversation_id
+            ).order_by(Message.created_at)
+            result = await session.execute(stmt)
+            return result.scalars().all()
 
 
 # Global database manager instance

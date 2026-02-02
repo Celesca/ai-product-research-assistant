@@ -47,11 +47,11 @@ services:
       - QDRANT_HOST=qdrant
       - QDRANT_PORT=6333
       - OLLAMA_BASE_URL=http://ollama:11434
-      - OLLAMA_MODEL=qwen3:4b
+      - OLLAMA_MODEL=qwen3:0.6b
       - DATABASE_URL=sqlite:///./data/app.db
       - COLLECTION_NAME=products
     volumes:
-      - ./data:/app/data
+      - ./data:/app/data  # Persist data including SQLite database
       - ./src:/app/src
     depends_on:
       - qdrant

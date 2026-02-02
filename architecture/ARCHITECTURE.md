@@ -107,6 +107,7 @@ The API layer handles all HTTP requests and provides:
 - **GET /health**: Health check for all services
 
 **Technologies:**
+
 - FastAPI for high-performance async API
 - Pydantic for request/response validation
 - CORS middleware for cross-origin requests
@@ -121,6 +122,7 @@ The intelligent routing layer that:
 4. Generates coherent responses
 
 **Key Features:**
+
 - State machine-based workflow using LangGraph
 - Tool binding with Ollama
 - Automatic retry and error handling
@@ -129,17 +131,20 @@ The intelligent routing layer that:
 ### 3. Tools Layer
 
 #### Tool 1: Product Catalog RAG
+
 - Semantic search over product descriptions
 - Metadata filtering (category, brand, price, rating)
 - Returns structured product information
 
 #### Tool 2: Web Search
+
 - Market trend research
 - Competitor price lookup
 - External product reviews
 - Falls back to mock data if no API key
 
 #### Tool 3: Price Analysis
+
 - **Deterministic calculations** (no LLM math)
 - Margin formula: `((price - cost) / price) × 100`
 - Category/brand analysis
@@ -148,12 +153,14 @@ The intelligent routing layer that:
 ### 4. Data Layer
 
 #### Qdrant Vector Database
+
 - Stores product embeddings
 - Fast similarity search
 - Payload indexes for filtering
 - Supports incremental updates
 
 #### SQLite Database
+
 - Query history storage
 - User feedback tracking
 - Lightweight and portable
@@ -224,32 +231,34 @@ The system handles monthly catalog updates efficiently:
    - No full re-indexing required
 
 2. **Change Detection**:
+
    ```python
    # Product ID is converted to numeric point ID
    # Same product_id always maps to same point_id
    point_id = hash(product_id) % (2**63)
-   
+
    # Upsert handles both insert and update
    client.upsert(collection_name, points)
    ```
 
 3. **Update Process**:
+
    ```bash
    # Run ingestion with new CSV
    python -m src.ingestion.pipeline --csv new_catalog.csv
-   
+
    # Or via API (future enhancement)
    POST /admin/ingest
    ```
 
 ### Recommended Update Schedule
 
-| Update Type | Frequency | Method |
-|-------------|-----------|--------|
-| Full catalog refresh | Monthly | Full ingestion |
-| Price updates | Weekly | Partial upsert |
-| New products | As needed | Incremental add |
-| Removed products | Monthly | Mark as deleted |
+| Update Type          | Frequency | Method          |
+| -------------------- | --------- | --------------- |
+| Full catalog refresh | Monthly   | Full ingestion  |
+| Price updates        | Weekly    | Partial upsert  |
+| New products         | As needed | Incremental add |
+| Removed products     | Monthly   | Mark as deleted |
 
 ## Scaling Strategy
 
@@ -298,28 +307,30 @@ For higher load:
 
 ### Latency
 
-| Component | Typical Latency |
-|-----------|-----------------|
-| Vector search | 10-50ms |
-| LLM inference | 2-10 seconds |
-| Web search | 200-500ms |
-| Database | 1-10ms |
+| Component     | Typical Latency |
+| ------------- | --------------- |
+| Vector search | 10-50ms         |
+| LLM inference | 2-10 seconds    |
+| Web search    | 200-500ms       |
+| Database      | 1-10ms          |
 
 **Optimization strategies:**
+
 - Response caching for common queries
 - Streaming responses
 - Async processing for non-critical paths
 
 ### Cost
 
-| Component | Cost Type |
-|-----------|-----------|
-| Ollama | Infrastructure (CPU/GPU) |
-| Qdrant | Infrastructure + Storage |
-| Web Search API | Per-request (if using real API) |
-| Embedding Model | One-time download |
+| Component       | Cost Type                       |
+| --------------- | ------------------------------- |
+| Ollama          | Infrastructure (CPU/GPU)        |
+| Qdrant          | Infrastructure + Storage        |
+| Web Search API  | Per-request (if using real API) |
+| Embedding Model | One-time download               |
 
 **Cost optimization:**
+
 - Use smaller models for simple queries
 - Cache embeddings and responses
 - Batch similar queries
@@ -346,12 +357,14 @@ For higher load:
 ### Chosen Approach: Local LLM (Ollama)
 
 **Pros:**
+
 - No API costs
 - Data stays local
 - No rate limits
 - Full control
 
 **Cons:**
+
 - Higher infrastructure requirements
 - Slower than cloud APIs
 - Limited to local hardware
@@ -359,11 +372,13 @@ For higher load:
 ### Alternative: Cloud LLM (OpenAI/Anthropic)
 
 **Pros:**
+
 - Faster responses
 - Better model quality
 - No infrastructure management
 
 **Cons:**
+
 - Per-request costs
 - Data leaves your infrastructure
 - Rate limits and quotas
@@ -371,19 +386,21 @@ For higher load:
 ### Vector Database Choice: Qdrant
 
 **Why Qdrant:**
+
 - Easy Docker deployment
 - Good filtering support
 - Active development
 - Free and open source
 
 **Alternatives considered:**
+
 - Pinecone: Better scalability but paid
 - Weaviate: More features but heavier
 - Chroma: Simpler but less production-ready
 
 ## Monitoring & Observability
 
-### Recommended Stack
+### In the future
 
 ```
 ┌────────────────────────────────────────────────┐

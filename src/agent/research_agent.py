@@ -3,6 +3,7 @@ from typing_extensions import TypedDict
 import operator
 import json
 import asyncio
+import logging
 
 from langchain_core.messages import BaseMessage, HumanMessage, AIMessage, ToolMessage, SystemMessage
 from langchain_core.tools import tool, BaseTool
@@ -17,9 +18,17 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.dirname(__file__))))
 
 from src.utils.config import settings
 from src.models.schemas import ProductSearchInput, WebSearchInput, PriceAnalysisInput
-from src.tools.product_catalog_rag import ProductCatalogRAGTool
-from src.tools.web_search import WebSearchTool
-from src.tools.price_analysis import PriceAnalysisTool
+from src.agent.tools.product_catalog_rag import ProductCatalogRAGTool
+from src.agent.tools.web_search import WebSearchTool
+from src.agent.tools.price_analysis import PriceAnalysisTool
+
+# Configure logging for agent thinking visibility
+logger = logging.getLogger(__name__)
+logging.basicConfig(
+    level=logging.INFO,
+    format='%(asctime)s | %(levelname)s | %(name)s | %(message)s',
+    datefmt='%H:%M:%S'
+)
 
 
 # Define the agent state
@@ -86,6 +95,9 @@ class ResearchAgent:
             Use this for finding products by description, features, category, brand, or specifications.
             Returns product details including price, stock, ratings, and margin information.
             """
+            logger.info(f"🔍 [TOOL] product_catalog_search executing...")
+            logger.info(f"   └─ Query: '{query}' | Filters: category={category}, brand={brand}")
+            
             result = self.product_catalog_tool.search(
                 query=query,
                 category=category,
@@ -96,6 +108,13 @@ class ResearchAgent:
                 in_stock=in_stock,
                 limit=limit
             )
+            
+            # Log result summary
+            if result.get("status") == "success":
+                logger.info(f"   ✓ Found {result.get('total_results', 0)} products")
+            else:
+                logger.warning(f"   ⚠ Tool returned: {result.get('status')}")
+            
             return json.dumps(result, indent=2)
         
         # Web search tool
@@ -106,7 +125,17 @@ class ResearchAgent:
             Use this for current market prices, competitor products, reviews, or trends
             that are not in the internal product catalog.
             """
+            logger.info(f"🌐 [TOOL] web_search executing...")
+            logger.info(f"   └─ Query: '{query}' | Limit: {limit}")
+            
             result = self.web_search_tool.search_sync(query=query, limit=limit)
+            
+            # Log result summary
+            if result.get("status") == "success":
+                logger.info(f"   ✓ Found {len(result.get('results', []))} web results")
+            else:
+                logger.warning(f"   ⚠ Tool returned: {result.get('status')}")
+            
             return json.dumps(result, indent=2)
         
         # Price analysis tool
@@ -118,14 +147,9 @@ class ResearchAgent:
             threshold: float = 40.0,
             limit: int = 10
         ) -> str:
-            """
-            Analyze product pricing and profit margins using deterministic calculations.
-            Use this for:
-            - Finding products with lowest/highest margins
-            - Analyzing margins by category or brand
-            - Finding products below a margin threshold
-            All calculations use the formula: margin = ((price - cost) / price) × 100
-            """
+            logger.info(f"📊 [TOOL] price_analysis executing...")
+            logger.info(f"   └─ Type: {analysis_type} | Category: {category} | Brand: {brand}")
+            
             result = self.price_analysis_tool.analyze(
                 analysis_type=analysis_type,
                 category=category,
@@ -133,6 +157,13 @@ class ResearchAgent:
                 threshold=threshold,
                 limit=limit
             )
+            
+            # Log result summary
+            if result.get("status") == "success":
+                logger.info(f"   ✓ Analyzed {result.get('total_products_analyzed', 0)} products")
+            else:
+                logger.warning(f"   ⚠ Tool returned: {result.get('status')}")
+            
             return json.dumps(result, indent=2)
         
         return [product_catalog_search, web_search, price_analysis]
@@ -148,29 +179,52 @@ class ResearchAgent:
             """Process the current state and decide next action."""
             messages = state["messages"]
             
+            # Log incoming query
+            if len(messages) == 1:
+                logger.info("=" * 60)
+                logger.info("🧠 AGENT THINKING STARTED")
+                logger.info(f"📝 User Query: {messages[0].content}")
+                logger.info("=" * 60)
+            
             # If this is the first message, add system context
             if len(messages) == 1:
-                system_message = SystemMessage(content="""You are an AI Product Research Assistant. Your job is to help users with product research by:
+                system_message = SystemMessage(content="""You are an AI Product Research Assistant. Your job is to help users with product research.
 
-1. **Product Catalog Search** (product_catalog_search): Search our internal product catalog for product information, stock levels, prices, and ratings.
+**Available Tools:**
+1. **product_catalog_search**: Search internal product catalog for products, stock levels, prices, ratings
+2. **web_search**: Search web for market trends, competitor prices, reviews
+3. **price_analysis**: Analyze pricing and profit margins (uses formula: margin = ((price - cost) / price) × 100)
 
-2. **Web Search** (web_search): Search the web for current market prices, competitor information, product reviews, and market trends.
+**Tool Selection:**
+- Internal product queries → product_catalog_search
+- External market data → web_search
+- Margin analysis → price_analysis
 
-3. **Price Analysis** (price_analysis): Analyze pricing and profit margins using deterministic calculations. This tool calculates margins using the formula: margin = ((price - cost) / price) × 100
+**CRITICAL RESPONSE FORMAT:**
+- Provide a BRIEF, CONCISE summary (1-3 sentences max)
+- Do NOT list out individual products - the structured data is returned separately
+- Focus on insights and key findings, not raw data
+- Example good answer: "Found 5 wireless headphones in stock, prices range from $29.99 to $129.99. Top rated is AudioMax at 4.5 stars."
+- Example bad answer: Listing every product with all its details
 
-**Guidelines:**
-- For internal product queries (stock, our prices, our products), use product_catalog_search
-- For external market data (competitor prices, market trends, reviews), use web_search  
-- For margin analysis and pricing recommendations, use price_analysis
-- You may use multiple tools if the query requires combined information
-- Always explain your reasoning for which tools you're using
-- Provide clear, actionable insights based on the data
-
-**Important:** For price analysis, NEVER calculate margins yourself - always use the price_analysis tool which performs accurate deterministic calculations.""")
+**For price analysis:** NEVER calculate margins yourself - use the price_analysis tool.""")
                 messages = [system_message] + list(messages)
+                logger.info("📋 System prompt injected")
             
             # Call LLM with tools
+            logger.info("🤖 Calling LLM...")
             response = self.llm_with_tools.invoke(messages)
+            
+            # Log LLM response
+            if hasattr(response, "tool_calls") and response.tool_calls:
+                logger.info(f"🔧 LLM decided to use {len(response.tool_calls)} tool(s):")
+                for tc in response.tool_calls:
+                    logger.info(f"   └─ Tool: {tc['name']}")
+                    logger.info(f"      Args: {json.dumps(tc['args'], indent=2)}")
+            else:
+                # Final answer
+                answer_preview = response.content[:200] + "..." if len(response.content) > 200 else response.content
+                logger.info(f"💬 LLM Final Answer: {answer_preview}")
             
             return {"messages": [response]}
         
@@ -182,9 +236,12 @@ class ResearchAgent:
             
             # If the LLM made tool calls, continue to tool node
             if hasattr(last_message, "tool_calls") and last_message.tool_calls:
+                logger.info("➡️  Decision: Continue to TOOLS")
                 return "tools"
             
             # Otherwise, end
+            logger.info("✅ Decision: END (final answer ready)")
+            logger.info("=" * 60)
             return END
         
         # Build the graph
@@ -210,22 +267,38 @@ class ResearchAgent:
         
         return workflow.compile()
     
-    async def aquery(self, query: str) -> Dict[str, Any]:
+    async def aquery(self, query: str, conversation_history: Optional[List[Dict[str, str]]] = None) -> Dict[str, Any]:
         """
         Process a query asynchronously.
         
         Args:
             query: The user's query
+            conversation_history: Optional list of previous messages in format [{"role": "user"|"assistant", "content": "..."}]
             
         Returns:
-            Dictionary with response, tools used, reasoning, and confidence
+            Dictionary with structured response including products, sources, and confidence
         """
         import time
         start_time = time.time()
         
+        # Build message list with conversation history
+        messages = []
+        
+        # Add previous conversation messages if provided
+        if conversation_history:
+            for msg in conversation_history:
+                if msg["role"] == "user":
+                    messages.append(HumanMessage(content=msg["content"]))
+                elif msg["role"] == "assistant":
+                    messages.append(AIMessage(content=msg["content"]))
+            logger.info(f"📜 Loaded {len(conversation_history)} previous messages for context")
+        
+        # Add current query
+        messages.append(HumanMessage(content=query))
+        
         # Initialize state
         initial_state: AgentState = {
-            "messages": [HumanMessage(content=query)],
+            "messages": messages,
             "tools_used": [],
             "reasoning": "",
             "final_answer": "",
@@ -241,18 +314,106 @@ class ResearchAgent:
             # Extract results
             messages = final_state["messages"]
             tools_used = set()
+            products = []
+            sources = []
+            confidence_scores = []
             
-            # Collect tools used from messages
+            # Collect tools used and extract structured data from tool messages
             for msg in messages:
                 if hasattr(msg, "tool_calls") and msg.tool_calls:
                     for tc in msg.tool_calls:
                         tools_used.add(tc["name"])
+                
                 if isinstance(msg, ToolMessage):
                     tools_used.add(msg.name)
+                    
+                    # Parse tool result content
+                    try:
+                        tool_result = json.loads(msg.content) if isinstance(msg.content, str) else msg.content
+                        
+                        # Extract products from product_catalog_search
+                        if msg.name == "product_catalog_search" and tool_result.get("status") == "success":
+                            for p in tool_result.get("products", []):
+                                products.append({
+                                    "product_id": p.get("product_id", ""),
+                                    "product_name": p.get("product_name", ""),
+                                    "brand": p.get("brand", ""),
+                                    "category": p.get("category", ""),
+                                    "current_price": p.get("current_price", 0),
+                                    "cost": p.get("cost"),
+                                    "stock_quantity": p.get("stock_quantity"),
+                                    "average_rating": p.get("average_rating"),
+                                    "margin_percentage": p.get("margin_percentage"),
+                                    "relevance_score": p.get("score")
+                                })
+                            if tool_result.get("confidence"):
+                                confidence_scores.append(tool_result["confidence"])
+                        
+                        # Extract sources from web_search
+                        elif msg.name == "web_search" and tool_result.get("status") == "success":
+                            for r in tool_result.get("results", []):
+                                sources.append({
+                                    "title": r.get("title", ""),
+                                    "url": r.get("url"),
+                                    "content": r.get("content"),
+                                    "source_type": "web",
+                                    "relevance_score": r.get("score")
+                                })
+                            # Add answer as a source if available
+                            if tool_result.get("answer"):
+                                sources.insert(0, {
+                                    "title": f"Web Search Summary: {query}",
+                                    "url": None,
+                                    "content": tool_result["answer"],
+                                    "source_type": "web_summary",
+                                    "relevance_score": 1.0
+                                })
+                        
+                        # Extract products from price_analysis
+                        elif msg.name == "price_analysis" and tool_result.get("status") == "success":
+                            for p in tool_result.get("products", []):
+                                # Check if product already exists
+                                existing_ids = {prod["product_id"] for prod in products}
+                                if p.get("product_id") not in existing_ids:
+                                    products.append({
+                                        "product_id": p.get("product_id", ""),
+                                        "product_name": p.get("product_name", ""),
+                                        "brand": p.get("brand", ""),
+                                        "category": p.get("category", ""),
+                                        "current_price": p.get("current_price", 0),
+                                        "cost": p.get("cost"),
+                                        "stock_quantity": None,
+                                        "average_rating": None,
+                                        "margin_percentage": p.get("margin_percentage"),
+                                        "relevance_score": None
+                                    })
+                            # Add analysis summary as source
+                            sources.append({
+                                "title": f"Price Analysis: {tool_result.get('analysis_type', 'margins')}",
+                                "url": None,
+                                "content": f"Analyzed {tool_result.get('total_products_analyzed', 0)} products",
+                                "source_type": "analysis",
+                                "relevance_score": 1.0
+                            })
+                    except (json.JSONDecodeError, TypeError):
+                        # If parsing fails, continue without structured data
+                        pass
             
-            # Get final response
+            # Get final response from LLM
             final_message = messages[-1]
             final_answer = final_message.content if hasattr(final_message, "content") else str(final_message)
+            
+            # Calculate overall confidence
+            if confidence_scores:
+                overall_confidence = sum(confidence_scores) / len(confidence_scores)
+            elif products:
+                # Calculate from product relevance scores
+                product_scores = [p.get("relevance_score", 0.8) for p in products if p.get("relevance_score")]
+                overall_confidence = sum(product_scores) / len(product_scores) if product_scores else 0.85
+            elif tools_used:
+                overall_confidence = 0.75
+            else:
+                overall_confidence = 0.6
             
             execution_time = int((time.time() - start_time) * 1000)
             
@@ -260,9 +421,11 @@ class ResearchAgent:
                 "status": "success",
                 "query": query,
                 "answer": final_answer,
+                "products": products,
+                "sources": sources,
+                "confidence": round(overall_confidence, 2),
                 "tools_used": list(tools_used),
                 "reasoning": f"Used {len(tools_used)} tool(s) to answer the query: {', '.join(tools_used)}" if tools_used else "Answered directly without tool calls",
-                "confidence": 0.85 if tools_used else 0.7,
                 "execution_time_ms": execution_time
             }
             
@@ -272,24 +435,27 @@ class ResearchAgent:
                 "status": "error",
                 "query": query,
                 "answer": f"I encountered an error while processing your query: {str(e)}",
+                "products": [],
+                "sources": [],
+                "confidence": 0.0,
                 "tools_used": [],
                 "reasoning": f"Error occurred: {str(e)}",
-                "confidence": 0.0,
                 "execution_time_ms": execution_time,
                 "error": str(e)
             }
     
-    def query(self, query: str) -> Dict[str, Any]:
+    def query(self, query: str, conversation_history: Optional[List[Dict[str, str]]] = None) -> Dict[str, Any]:
         """
         Process a query synchronously.
         
         Args:
             query: The user's query
+            conversation_history: Optional list of previous messages for context
             
         Returns:
             Dictionary with response, tools used, reasoning, and confidence
         """
-        return asyncio.run(self.aquery(query))
+        return asyncio.run(self.aquery(query, conversation_history=conversation_history))
 
 
 def create_agent(
