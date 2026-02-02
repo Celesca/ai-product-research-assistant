@@ -239,12 +239,10 @@ product-research-assistant/
 **Your README.md must include:**
 
 1. **Setup Instructions**
-
    - Dependencies installation
    - Environment variables setup
 
 2. **Run the Application**
-
    - How to start the API
    - Docker commands (if applicable)
 
